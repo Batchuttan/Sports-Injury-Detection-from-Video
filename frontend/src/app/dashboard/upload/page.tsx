@@ -44,12 +44,17 @@ export default function VideoUploadPage() {
 
     try {
       const token = localStorage.getItem("token");
-      if (!token) throw new Error("No authorization token found");
+      if (!token) throw new Error("No authorization token found. Please log in first.");
 
       const response = await uploadVideo(token, file, activity, surfaceType, footwear, rpe, sleepQuality);
       setResult(response);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "An error occurred during video upload and processing.");
+      const msg = err instanceof Error ? err.message : "An error occurred during video upload and processing.";
+      if (msg.includes("401") || msg.includes("credentials")) {
+        setError("Your session has expired. Please log in again to continue.");
+      } else {
+        setError(msg);
+      }
     } finally {
       setUploading(false);
     }
@@ -188,15 +193,32 @@ export default function VideoUploadPage() {
 
           {result ? (
             <div className="space-y-6 flex-1">
-              <div className="aspect-video bg-slate-950 rounded-xl overflow-hidden border border-slate-700 relative">
+              <div className="aspect-video bg-slate-950 rounded-xl overflow-hidden border border-slate-700 relative flex flex-col justify-center">
                 <video
+                  key={result.processed_url}
                   controls
+                  autoPlay
+                  muted
+                  playsInline
+                  preload="auto"
                   className="w-full h-full object-contain"
                   src={`http://127.0.0.1:8000${result.processed_url}`}
-                />
+                >
+                  Your browser does not support HTML5 video playback.
+                </video>
                 <div className={`absolute top-3 left-3 px-2 py-1 bg-black/60 backdrop-blur-md rounded border text-xs text-white flex items-center gap-2 ${result.analytics.anomaly_detected ? 'border-rose-500/50' : 'border-white/10'}`}>
                   <span className={`w-2 h-2 rounded-full ${result.analytics.anomaly_detected ? 'bg-rose-500 animate-pulse' : 'bg-green-500'}`}></span>
                   {result.analytics.anomaly_detected ? 'Anomaly Detected' : 'Motion Enhanced'}
+                </div>
+                <div className="absolute top-3 right-3">
+                  <a
+                    href={`http://127.0.0.1:8000${result.processed_url}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2.5 py-1 bg-slate-900/80 hover:bg-slate-800 text-xs text-indigo-300 hover:text-white rounded border border-indigo-500/30 backdrop-blur-md transition-colors"
+                  >
+                    Open Raw ↗
+                  </a>
                 </div>
               </div>
 
@@ -216,7 +238,7 @@ export default function VideoUploadPage() {
 
               <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-800 space-y-3">
                 <div className="text-xs text-slate-500 uppercase font-semibold">Biomechanical Findings</div>
-                {result.analytics.risk_flags.map((flag: string, idx: number) => (
+                {(Array.isArray(result.analytics?.risk_flags) ? result.analytics.risk_flags : []).map((flag: string, idx: number) => (
                   <div key={idx} className="flex items-start gap-3">
                     <svg className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />

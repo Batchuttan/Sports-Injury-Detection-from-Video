@@ -133,7 +133,25 @@ function AthleteDashboard() {
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {analyses.map((analysis) => {
-                const flags = JSON.parse(analysis.injury_probabilities || "[]");
+                let flags: string[] = [];
+                try {
+                  const parsed = JSON.parse(analysis.injury_probabilities || "[]");
+                  if (Array.isArray(parsed)) {
+                    flags = parsed.map((item) => (typeof item === "string" ? item : JSON.stringify(item)));
+                  } else if (parsed && typeof parsed === "object") {
+                    const positive = Object.entries(parsed).filter(
+                      ([_, val]) => typeof val === "number" ? val > 0 : Boolean(val)
+                    );
+                    flags = positive.length > 0
+                      ? positive.map(([key, val]) => `${key}: ${val}%`)
+                      : [];
+                  } else if (typeof parsed === "string") {
+                    flags = [parsed];
+                  }
+                } catch {
+                  flags = analysis.injury_probabilities ? [String(analysis.injury_probabilities)] : [];
+                }
+
                 return (
                   <div key={analysis.id} className="bg-slate-900/50 p-6 rounded-xl border border-slate-800 hover:border-slate-700 transition-colors flex flex-col">
                     <div className="flex justify-between items-start mb-4">
