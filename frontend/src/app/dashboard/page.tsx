@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { getUserFromToken } from "@/lib/auth";
+import { getAnalyses, getNotifications, API_URL } from "@/lib/api";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line, AreaChart, Area } from 'recharts';
 
 export default function DashboardHome() {
@@ -11,7 +12,7 @@ export default function DashboardHome() {
   useEffect(() => {
     const user = getUserFromToken();
     if (user) {
-      setTimeout(() => setUser(user), 0);
+      setUser(user);
     }
   }, []);
 
@@ -38,41 +39,48 @@ function AthleteDashboard() {
   const [notifications, setNotifications] = useState<any[]>([]);
 
   useEffect(() => {
-    const fetchAnalyses = async () => {
+    let isMounted = true;
+    const fetchDashboardData = async () => {
       try {
         const token = localStorage.getItem("token");
         if (!token) return;
 
-        // Fetch Analyses
-        const { getAnalyses } = await import("@/lib/api");
-        const data = await getAnalyses(token);
-        setAnalyses(data);
+        // Fetch analyses and notifications in parallel
+        const [analysesData, notifData] = await Promise.all([
+          getAnalyses(token).catch((err) => {
+            console.error("Failed to load analyses:", err);
+            return [];
+          }),
+          getNotifications(token).catch((err) => {
+            console.error("Failed to load notifications:", err);
+            return [];
+          }),
+        ]);
 
-        // Fetch Notifications
-        const notifRes = await fetch("http://localhost:8000/notifications", {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        if (notifRes.ok) {
-          const notifData = await notifRes.json();
-          setNotifications(notifData);
+        if (isMounted) {
+          setAnalyses(analysesData || []);
+          setNotifications(notifData || []);
         }
       } catch (e) {
         console.error(e);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
-    fetchAnalyses();
+    fetchDashboardData();
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleExportPDF = () => {
     const token = localStorage.getItem("token");
-    window.open(`http://localhost:8000/export/pdf?token=${token}`, "_blank");
+    window.open(`${API_URL}/export/pdf?token=${token}`, "_blank");
   };
 
   const handleExportCSV = () => {
     const token = localStorage.getItem("token");
-    window.open(`http://localhost:8000/export/csv?token=${token}`, "_blank");
+    window.open(`${API_URL}/export/csv?token=${token}`, "_blank");
   };
 
   const avgRiskScore = analyses.length > 0

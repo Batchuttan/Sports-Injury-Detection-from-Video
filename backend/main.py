@@ -1,17 +1,20 @@
 import os
 import shutil
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File
+import secrets
+import json
+from datetime import datetime, timedelta
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
-from datetime import timedelta
 from fastapi.staticfiles import StaticFiles
 
 import models
 import schemas
 import auth
 from database import engine, get_db, SessionLocal
-from video_processing import process_video_with_mediapipe
+from video_processing import process_video_with_mediapipe, compare_two_video_analyses
+from email_service import send_password_reset_email
 
 # Create all tables
 models.Base.metadata.create_all(bind=engine)
@@ -35,10 +38,17 @@ def create_default_user():
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1)(:[0-9]+)?$",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    max_age=86400,
 )
+
+@app.get("/")
+@app.get("/health")
+def health_check():
+    return {"status": "ok", "app": "Sports Injury Risk Detection API"}
 
 os.makedirs("uploads", exist_ok=True)
 os.makedirs("processed", exist_ok=True)
@@ -141,6 +151,124 @@ def login_with_google(google_data: schemas.GoogleLogin, db: Session = Depends(ge
         data={"sub": user.email, "role": user.role}, expires_delta=access_token_expires
     )
     return {"access_token": access_token, "token_type": "bearer"}
+
+@app.post("/auth/forgot-password")
+def forgot_password(req: schemas.ForgotPasswordRequest, db: Session = Depends(get_db)):
+    email = req.email.strip().lower()
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if not user:
+        return {
+            "message": "If this email is registered in our platform, a password reset link has been dispatched.",
+            "success": True,
+            "reset_url": None
+        }
+
+    reset_token = secrets.token_urlsafe(32)
+    expires_at = (datetime.utcnow() + timedelta(minutes=30)).isoformat()
+    now_iso = datetime.utcnow().isoformat()
+
+    token_record = models.PasswordResetToken(
+        user_id=user.id,
+        token=reset_token,
+        expires_at=expires_at,
+        is_used=0,
+        created_at=now_iso
+    )
+    db.add(token_record)
+    db.commit()
+
+    email_result = send_password_reset_email(to_email=user.email, reset_token=reset_token, mode="reset")
+    return {
+        "message": f"Password reset link successfully sent to {user.email}",
+        "success": True,
+        "reset_url": email_result.get("reset_url")
+    }
+
+@app.post("/auth/request-password-change")
+def request_password_change(current_user: models.User = Depends(get_current_user), db: Session = Depends(get_db)):
+    reset_token = secrets.token_urlsafe(32)
+    expires_at = (datetime.utcnow() + timedelta(minutes=30)).isoformat()
+    now_iso = datetime.utcnow().isoformat()
+
+    token_record = models.PasswordResetToken(
+        user_id=current_user.id,
+        token=reset_token,
+        expires_at=expires_at,
+        is_used=0,
+        created_at=now_iso
+    )
+    db.add(token_record)
+    db.commit()
+
+    email_result = send_password_reset_email(to_email=current_user.email, reset_token=reset_token, mode="change")
+    return {
+        "message": f"Confirmation link sent to {current_user.email} to verify password update.",
+        "success": True,
+        "change_url": email_result.get("reset_url")
+    }
+
+@app.post("/auth/verify-reset-token")
+def verify_reset_token(req: schemas.VerifyResetTokenRequest, db: Session = Depends(get_db)):
+    token_record = db.query(models.PasswordResetToken).filter(
+        models.PasswordResetToken.token == req.token
+    ).first()
+
+    if not token_record or token_record.is_used == 1:
+        raise HTTPException(status_code=400, detail="Invalid or previously used password link.")
+
+    try:
+        expires_dt = datetime.fromisoformat(token_record.expires_at)
+        if datetime.utcnow() > expires_dt:
+            raise HTTPException(status_code=400, detail="Password reset link has expired (valid for 30 minutes).")
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Malformed token timestamp.")
+
+    user = db.query(models.User).filter(models.User.id == token_record.user_id).first()
+    return {
+        "valid": True,
+        "email": user.email if user else ""
+    }
+
+@app.post("/auth/reset-password")
+def reset_password(req: schemas.ResetPasswordRequest, db: Session = Depends(get_db)):
+    if len(req.new_password) < 6:
+        raise HTTPException(status_code=400, detail="New password must be at least 6 characters.")
+
+    token_record = db.query(models.PasswordResetToken).filter(
+        models.PasswordResetToken.token == req.token
+    ).first()
+
+    if not token_record or token_record.is_used == 1:
+        raise HTTPException(status_code=400, detail="Invalid or previously used password link.")
+
+    try:
+        expires_dt = datetime.fromisoformat(token_record.expires_at)
+        if datetime.utcnow() > expires_dt:
+            raise HTTPException(status_code=400, detail="Password link has expired.")
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=400, detail="Malformed token.")
+
+    user = db.query(models.User).filter(models.User.id == token_record.user_id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="Associated user not found.")
+
+    user.hashed_password = auth.get_password_hash(req.new_password)
+    token_record.is_used = 1
+
+    notif = models.Notification(
+        user_id=user.id,
+        title="Security Alert: Password Changed",
+        message="Your account password was updated via verified email confirmation.",
+        type="info",
+        created_at=datetime.utcnow().isoformat()
+    )
+    db.add(notif)
+    db.commit()
+
+    return {
+        "success": True,
+        "message": "Password updated successfully. You may now log in with your new credentials."
+    }
 
 @app.get("/users/me", response_model=schemas.UserResponse)
 def read_users_me(current_user: models.User = Depends(get_current_user)):
@@ -276,6 +404,167 @@ async def upload_and_process_video(
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/video/compare")
+async def compare_videos(
+    file_a: UploadFile = File(...),
+    file_b: UploadFile = File(...),
+    activity_a: str = Form("Squatting"),
+    activity_b: str = Form("Squatting"),
+    surface_type: str = Form("Indoor Hardwood"),
+    footwear: str = Form("Athletic Shoes"),
+    rpe_a: int = Form(5),
+    rpe_b: int = Form(5),
+    sleep_quality_a: int = Form(5),
+    sleep_quality_b: int = Form(5),
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    os.makedirs("uploads", exist_ok=True)
+    os.makedirs("processed", exist_ok=True)
+
+    file_a_path = f"uploads/a_{secrets.token_hex(4)}_{file_a.filename}"
+    file_b_path = f"uploads/b_{secrets.token_hex(4)}_{file_b.filename}"
+
+    with open(file_a_path, "wb") as buf_a:
+        shutil.copyfileobj(file_a.file, buf_a)
+    with open(file_b_path, "wb") as buf_b:
+        shutil.copyfileobj(file_b.file, buf_b)
+
+    try:
+        result_a = process_video_with_mediapipe(
+            file_a_path, "processed", activity_a, surface_type, footwear, rpe_a, sleep_quality_a
+        )
+        result_b = process_video_with_mediapipe(
+            file_b_path, "processed", activity_b, surface_type, footwear, rpe_b, sleep_quality_b
+        )
+
+        comparison_data = compare_two_video_analyses(result_a, result_b)
+
+        now_iso = datetime.utcnow().isoformat()
+        db_analysis_a = models.VideoAnalysis(
+            user_id=current_user.id,
+            activity=result_a['analytics']['activity_analyzed'],
+            surface_type=surface_type,
+            footwear=footwear,
+            rpe=rpe_a,
+            sleep_quality=sleep_quality_a,
+            risk_score=result_a['analytics']['risk_score'],
+            risk_level=result_a['analytics']['risk_level'],
+            injury_probabilities=json.dumps(result_a['analytics']['injury_probabilities']),
+            corrective_recommendation=result_a['analytics']['corrective_recommendation'],
+            created_at=now_iso
+        )
+        db_analysis_b = models.VideoAnalysis(
+            user_id=current_user.id,
+            activity=result_b['analytics']['activity_analyzed'],
+            surface_type=surface_type,
+            footwear=footwear,
+            rpe=rpe_b,
+            sleep_quality=sleep_quality_b,
+            risk_score=result_b['analytics']['risk_score'],
+            risk_level=result_b['analytics']['risk_level'],
+            injury_probabilities=json.dumps(result_b['analytics']['injury_probabilities']),
+            corrective_recommendation=result_b['analytics']['corrective_recommendation'],
+            created_at=now_iso
+        )
+        db.add(db_analysis_a)
+        db.add(db_analysis_b)
+        db.commit()
+
+        return {
+            "success": True,
+            "message": "Comparative biomechanics analysis completed successfully",
+            "video_a": {
+                "id": db_analysis_a.id,
+                "original_filename": file_a.filename,
+                "processed_url": f"/processed/{result_a['filename']}",
+                "analytics": result_a['analytics']
+            },
+            "video_b": {
+                "id": db_analysis_b.id,
+                "original_filename": file_b.filename,
+                "processed_url": f"/processed/{result_b['filename']}",
+                "analytics": result_b['analytics']
+            },
+            "comparison": comparison_data
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Comparative processing failed: {str(e)}")
+
+@app.post("/video/compare-existing")
+def compare_existing_analyses(
+    req: schemas.CompareExistingRequest,
+    current_user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    analysis_a = db.query(models.VideoAnalysis).filter(
+        models.VideoAnalysis.id == req.analysis_id_a,
+        models.VideoAnalysis.user_id == current_user.id
+    ).first()
+    analysis_b = db.query(models.VideoAnalysis).filter(
+        models.VideoAnalysis.id == req.analysis_id_b,
+        models.VideoAnalysis.user_id == current_user.id
+    ).first()
+
+    if not analysis_a or not analysis_b:
+        raise HTTPException(status_code=404, detail="One or both selected analyses could not be found.")
+
+    probs_a = json.loads(analysis_a.injury_probabilities) if analysis_a.injury_probabilities else {}
+    probs_b = json.loads(analysis_b.injury_probabilities) if analysis_b.injury_probabilities else {}
+
+    mock_result_a = {
+        "filename": "",
+        "analytics": {
+            "activity_analyzed": analysis_a.activity,
+            "risk_score": analysis_a.risk_score,
+            "risk_level": analysis_a.risk_level,
+            "injury_probabilities": probs_a,
+            "biomechanics": {
+                "max_trunk_lean": 15.0,
+                "movement_asymmetry": 6.0,
+                "max_knee_valgus": 8.0
+            }
+        }
+    }
+    mock_result_b = {
+        "filename": "",
+        "analytics": {
+            "activity_analyzed": analysis_b.activity,
+            "risk_score": analysis_b.risk_score,
+            "risk_level": analysis_b.risk_level,
+            "injury_probabilities": probs_b,
+            "biomechanics": {
+                "max_trunk_lean": 12.0,
+                "movement_asymmetry": 4.0,
+                "max_knee_valgus": 5.0
+            }
+        }
+    }
+
+    comparison_data = compare_two_video_analyses(mock_result_a, mock_result_b)
+    return {
+        "success": True,
+        "video_a": {
+            "id": analysis_a.id,
+            "activity": analysis_a.activity,
+            "risk_score": analysis_a.risk_score,
+            "risk_level": analysis_a.risk_level,
+            "created_at": analysis_a.created_at,
+            "injury_probabilities": probs_a
+        },
+        "video_b": {
+            "id": analysis_b.id,
+            "activity": analysis_b.activity,
+            "risk_score": analysis_b.risk_score,
+            "risk_level": analysis_b.risk_level,
+            "created_at": analysis_b.created_at,
+            "injury_probabilities": probs_b
+        },
+        "comparison": comparison_data
+    }
 
 @app.get("/athlete/analyses", response_model=list[schemas.VideoAnalysisResponse])
 def get_athlete_analyses(db: Session = Depends(get_db), current_user: models.User = Depends(get_current_user)):

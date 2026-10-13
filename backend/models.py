@@ -16,7 +16,7 @@ class AthleteProfile(Base):
     __tablename__ = "athlete_profiles"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
     sport_type = Column(String)
     position = Column(String)
     age = Column(Integer)
@@ -31,7 +31,7 @@ class PhysicalAssessment(Base):
     __tablename__ = "physical_assessments"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
     date = Column(String)
     test_name = Column(String)
     score = Column(Float)
@@ -43,7 +43,7 @@ class PerformanceRecord(Base):
     __tablename__ = "performance_records"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
     date = Column(String)
     metric = Column(String)
     value = Column(Float)
@@ -55,7 +55,7 @@ class VideoAnalysis(Base):
     __tablename__ = "video_analyses"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
     activity = Column(String)
     surface_type = Column(String)
     footwear = Column(String)
@@ -73,11 +73,23 @@ class Notification(Base):
     __tablename__ = "notifications"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"))
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
     title = Column(String)
     message = Column(String)
     type = Column(String) # alert, warning, info
     is_read = Column(Integer, default=0)
+    created_at = Column(String)
+
+    user = relationship("User")
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), index=True)
+    token = Column(String, unique=True, index=True)
+    expires_at = Column(String)  # ISO timestamp
+    is_used = Column(Integer, default=0)  # 0 = active, 1 = used
     created_at = Column(String)
 
     user = relationship("User")

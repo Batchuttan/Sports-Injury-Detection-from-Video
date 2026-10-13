@@ -191,3 +191,103 @@ export const getAnalyses = async (token: string) => {
   if (!response.ok) throw new Error("Failed to fetch analyses");
   return response.json();
 };
+
+export const getNotifications = async (token: string) => {
+  try {
+    const response = await fetch(`${API_URL}/notifications`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) return [];
+    return response.json();
+  } catch {
+    return [];
+  }
+};
+
+export const forgotPassword = async (email: string) => {
+  const response = await fetch(`${API_URL}/auth/forgot-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.detail || "Failed to process forgot password request.");
+  }
+  return response.json();
+};
+
+export const requestPasswordChange = async (token: string) => {
+  const response = await fetch(`${API_URL}/auth/request-password-change`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.detail || "Failed to request password change.");
+  }
+  return response.json();
+};
+
+export const verifyResetToken = async (token: string) => {
+  const response = await fetch(`${API_URL}/auth/verify-reset-token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token }),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.detail || "Invalid or expired password reset link.");
+  }
+  return response.json();
+};
+
+export const resetPassword = async (token: string, newPassword: string) => {
+  const response = await fetch(`${API_URL}/auth/reset-password`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, new_password: newPassword }),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.detail || "Failed to reset password.");
+  }
+  return response.json();
+};
+
+export const compareVideos = async (token: string, formData: FormData) => {
+  const response = await fetch(`${API_URL}/video/compare`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Comparison failed: ${response.status} ${errorText}`);
+  }
+  return response.json();
+};
+
+export const compareExistingAnalyses = async (token: string, analysisIdA: number, analysisIdB: number) => {
+  const response = await fetch(`${API_URL}/video/compare-existing`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({
+      analysis_id_a: analysisIdA,
+      analysis_id_b: analysisIdB,
+    }),
+  });
+  if (!response.ok) {
+    const data = await response.json().catch(() => ({}));
+    throw new Error(data.detail || "Failed to compare existing analyses.");
+  }
+  return response.json();
+};

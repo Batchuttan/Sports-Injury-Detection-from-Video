@@ -99,3 +99,22 @@ class NotificationResponse(BaseModel):
     created_at: str
     class ConfigDict:
         from_attributes = True
+
+# Password Reset Schemas
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class VerifyResetTokenRequest(BaseModel):
+    token: str
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+class CompareExistingRequest(BaseModel):
+    analysis_id_a: int
+    analysis_id_b: int

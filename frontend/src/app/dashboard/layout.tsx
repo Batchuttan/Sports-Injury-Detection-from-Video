@@ -31,6 +31,8 @@ export default function DashboardLayout({
       case "Athlete":
         return [
           { name: "My Overview", href: "/dashboard" },
+          { name: "Analyze Video", href: "/dashboard/upload" },
+          { name: "Video Comparison", href: "/dashboard/compare" },
           { name: "Profile", href: "/dashboard/profile" },
           { name: "My Fitness", href: "/dashboard/fitness" },
           { name: "Training Plans", href: "/dashboard/training" },
@@ -39,33 +41,37 @@ export default function DashboardLayout({
       case "Coach":
         return [
           { name: "Team Overview", href: "/dashboard" },
+          { name: "Analyze Video", href: "/dashboard/upload" },
+          { name: "Video Comparison", href: "/dashboard/compare" },
           { name: "Player Monitoring", href: "#" },
-          { name: "Training Assignments", href: "#" },
           { name: "Workload Alerts", href: "#" },
         ];
       case "Physiotherapist":
         return [
           { name: "Injury Dashboard", href: "/dashboard" },
-          { name: "Rehab Plans", href: "#" },
+          { name: "Analyze Video", href: "/dashboard/upload" },
+          { name: "Video Comparison", href: "/dashboard/compare" },
           { name: "Recovery Status", href: "#" },
-          { name: "Return-to-Play", href: "#" },
         ];
       case "Sports Scientist":
         return [
           { name: "Performance Analytics", href: "/dashboard" },
-          { name: "Metrics Comparison", href: "#" },
-          { name: "Fatigue Trends", href: "#" },
+          { name: "Analyze Video", href: "/dashboard/upload" },
+          { name: "Video Comparison", href: "/dashboard/compare" },
           { name: "Reports", href: "#" },
         ];
       case "Administrator":
         return [
           { name: "Platform Overview", href: "/dashboard" },
+          { name: "Video Comparison", href: "/dashboard/compare" },
           { name: "User Management", href: "#" },
-          { name: "Team Config", href: "#" },
-          { name: "System Settings", href: "#" },
+          { name: "System Settings", href: "/dashboard/settings" },
         ];
       default:
-        return [{ name: "Overview", href: "/dashboard" }];
+        return [
+          { name: "Overview", href: "/dashboard" },
+          { name: "Video Comparison", href: "/dashboard/compare" },
+        ];
     }
   };
 

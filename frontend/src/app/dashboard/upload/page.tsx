@@ -1,13 +1,15 @@
 "use client";
 
 import { useState } from "react";
-import { uploadVideo } from "@/lib/api";
+import Link from "next/link";
+import { uploadVideo, API_URL } from "@/lib/api";
 
 const ACTIVITIES = [
-  "Running",
-  "Sprinting",
+  "Auto-Detect (AI Classification)",
   "Jumping",
   "Squatting",
+  "Running",
+  "Sprinting",
   "Landing",
   "Throwing",
   "Cutting Movements",
@@ -16,7 +18,7 @@ const ACTIVITIES = [
 
 export default function VideoUploadPage() {
   const [file, setFile] = useState<File | null>(null);
-  const [activity, setActivity] = useState<string>("Squatting");
+  const [activity, setActivity] = useState<string>("Auto-Detect (AI Classification)");
   const [surfaceType, setSurfaceType] = useState<string>("Unknown");
   const [footwear, setFootwear] = useState<string>("Unknown");
   const [rpe, setRpe] = useState<number>(5);
@@ -46,7 +48,8 @@ export default function VideoUploadPage() {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("No authorization token found. Please log in first.");
 
-      const response = await uploadVideo(token, file, activity, surfaceType, footwear, rpe, sleepQuality);
+      const targetActivity = activity.startsWith("Auto-Detect") ? "Auto-Detect" : activity;
+      const response = await uploadVideo(token, file, targetActivity, surfaceType, footwear, rpe, sleepQuality);
       setResult(response);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "An error occurred during video upload and processing.";
@@ -62,9 +65,20 @@ export default function VideoUploadPage() {
 
   return (
     <div className="max-w-5xl mx-auto space-y-6">
-      <div>
-        <h2 className="text-2xl font-bold text-white">Video Upload & Processing Engine</h2>
-        <p className="text-slate-400 text-sm mt-1">Upload athlete footage for AI-powered biomechanical analysis.</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-bold text-white">Video Upload & Processing Engine</h2>
+          <p className="text-slate-400 text-sm mt-1">Upload athlete footage for AI-powered biomechanical analysis.</p>
+        </div>
+        <Link
+          href="/dashboard/compare"
+          className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white text-xs font-bold transition-all shadow-[0_0_15px_rgba(79,70,229,0.3)] flex items-center gap-2 self-start sm:self-auto"
+        >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+          </svg>
+          Dual Video Comparison &rarr;
+        </Link>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -73,7 +87,13 @@ export default function VideoUploadPage() {
           <form onSubmit={handleUpload} className="space-y-6">
 
             <div className="space-y-2">
-              <label className="text-sm font-medium text-slate-300">Supported Activity</label>
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-slate-300">Activity / Movement Pattern</label>
+                <span className="text-[11px] text-indigo-400 bg-indigo-500/10 px-2.5 py-0.5 rounded-full border border-indigo-500/20 font-medium flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 animate-pulse"></span>
+                  AI Vision Verified
+                </span>
+              </div>
               <select
                 value={activity}
                 onChange={(e) => setActivity(e.target.value)}
@@ -83,6 +103,9 @@ export default function VideoUploadPage() {
                   <option key={act} value={act}>{act}</option>
                 ))}
               </select>
+              <p className="text-xs text-slate-400">
+                AI kinematics autonomously analyzes footage to identify the true athletic action, auto-correcting any dropdown mismatch.
+              </p>
             </div>
 
             <div className="grid grid-cols-2 gap-4">
@@ -202,7 +225,7 @@ export default function VideoUploadPage() {
                   playsInline
                   preload="auto"
                   className="w-full h-full object-contain"
-                  src={`http://127.0.0.1:8000${result.processed_url}`}
+                  src={`${API_URL}${result.processed_url}`}
                 >
                   Your browser does not support HTML5 video playback.
                 </video>
@@ -212,7 +235,7 @@ export default function VideoUploadPage() {
                 </div>
                 <div className="absolute top-3 right-3">
                   <a
-                    href={`http://127.0.0.1:8000${result.processed_url}`}
+                    href={`${API_URL}${result.processed_url}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="px-2.5 py-1 bg-slate-900/80 hover:bg-slate-800 text-xs text-indigo-300 hover:text-white rounded border border-indigo-500/30 backdrop-blur-md transition-colors"
@@ -223,9 +246,21 @@ export default function VideoUploadPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-800">
-                  <div className="text-xs text-slate-500 uppercase font-semibold mb-1">Activity Analyzed</div>
-                  <div className="text-lg font-medium text-white">{result.analytics.activity_analyzed}</div>
+                <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-800 space-y-1">
+                  <div className="text-xs text-slate-500 uppercase font-semibold flex items-center justify-between">
+                    <span>Activity Analyzed</span>
+                    {result.analytics?.action_auto_corrected && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-medium">
+                        Auto-Corrected
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-lg font-bold text-white">{result.analytics.activity_analyzed}</div>
+                  {result.analytics?.action_auto_corrected && result.analytics?.user_input_activity && (
+                    <div className="text-[11px] text-amber-400/90 font-medium pt-0.5">
+                      Input: &ldquo;{result.analytics.user_input_activity}&rdquo; &rarr; AI classified &ldquo;{result.analytics.activity_analyzed}&rdquo;
+                    </div>
+                  )}
                 </div>
                 <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-800">
                   <div className="text-xs text-slate-500 uppercase font-semibold mb-1">Risk Score</div>
@@ -238,14 +273,29 @@ export default function VideoUploadPage() {
 
               <div className="bg-slate-900/50 p-4 rounded-xl border border-slate-800 space-y-3">
                 <div className="text-xs text-slate-500 uppercase font-semibold">Biomechanical Findings</div>
-                {(Array.isArray(result.analytics?.risk_flags) ? result.analytics.risk_flags : []).map((flag: string, idx: number) => (
-                  <div key={idx} className="flex items-start gap-3">
-                    <svg className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                    </svg>
-                    <span className="text-slate-200 text-sm">{flag}</span>
-                  </div>
-                ))}
+                {(Array.isArray(result.analytics?.risk_flags) ? result.analytics.risk_flags : []).map((flag: string, idx: number) => {
+                  const isAutoCorrection = flag.includes("AI Action Auto-Correction") || flag.includes("AI Action Verification");
+                  return (
+                    <div
+                      key={idx}
+                      className={`flex items-start gap-3 p-2 rounded-lg border ${isAutoCorrection
+                        ? 'bg-amber-500/10 border-amber-500/30 text-amber-200'
+                        : 'bg-transparent border-transparent text-slate-200'
+                        }`}
+                    >
+                      {isAutoCorrection ? (
+                        <svg className="w-5 h-5 text-amber-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                      )}
+                      <span className="text-sm">{flag}</span>
+                    </div>
+                  );
+                })}
               </div>
 
               {result.analytics.corrective_recommendation && (

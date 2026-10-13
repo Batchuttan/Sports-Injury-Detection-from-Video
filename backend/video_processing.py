@@ -47,22 +47,26 @@ def classify_activity(
     target_h,
     athletic_pose_frames,
     person_detected_frames,
-    requested_activity
+    requested_activity,
+    ankle_y_l=None,
+    ankle_y_r=None,
+    wrist_y_l=None,
+    wrist_y_r=None
 ):
     """
-    Distinguishes true athletic movements from non-sports videos (e.g. video resumes, talking heads, static poses):
-    - Non-Sports: Lower kinetic chain not visible OR motion range of motion is negligible.
+    Autonomously classifies true athletic movement based on kinetic chain mechanics,
+    REGARDLESS of user input:
+    - Non-Sports: Lower kinetic chain not visible or motion ROM negligible.
+    - Jumping / Landing: Ballistic vertical hip displacement, flight phase (ankle lift), simultaneous knee flexion/extension.
+    - Squatting: Planted feet (no flight/ankle lift), synchronous bilateral knee flexion through deep ROM, stationary stride.
     - Running / Sprinting: Alternating asymmetric foot strikes, high stride spread, alternating ankle elevation.
-    - Squatting: Synchronous bilateral knee flexion (both knees bend together through active ROM > 25 deg, feet planted).
-    - Jumping / Landing: Simultaneous vertical extension / compression of both limbs with high hip elevation.
+    - Throwing: Unilateral high-velocity upper kinetic chain excursion.
     """
-    # 1. Require athlete's kinetic chain to be visible in a reasonable portion of the video
     if athletic_pose_frames < 8 or person_detected_frames < 8:
         return "Non-Sports / No Athletic Movement Detected"
 
     athletic_ratio = athletic_pose_frames / max(1, person_detected_frames)
     if athletic_ratio < 0.20:
-        # Lower body is absent in over 80% of frames (talking head, bust shot, webcam interview, video resume)
         return "Non-Sports / No Athletic Movement Detected"
 
     if not knee_angles_l or not knee_angles_r or len(knee_angles_l) < 5:
@@ -78,6 +82,8 @@ def classify_activity(
     else:
         knee_corr = 0.0
 
+    mean_abs_knee_diff = float(np.mean(np.abs(np.array(knee_angles_l[:n]) - np.array(knee_angles_r[:n])))) if n > 0 else 0.0
+
     min_knee = min(float(np.min(knee_angles_l)), float(np.min(knee_angles_r)))
     knee_rom = max(
         float(np.max(knee_angles_l) - np.min(knee_angles_l)),
@@ -85,31 +91,93 @@ def classify_activity(
     )
     hip_vert_rom = (float(np.max(hip_y_positions) - np.min(hip_y_positions)) / target_h) if hip_y_positions else 0.0
 
-    # 2. Check for dynamic athletic energy:
-    # If knees barely bend (< 15 degrees ROM), stride spread is tiny, and hips don't move, it is static / non-sports
-    if knee_rom < 15.0 and mean_stride < 0.08 and hip_vert_rom < 0.05:
+    # Vertical hip dynamics
+    if hip_y_positions and len(hip_y_positions) > 3:
+        hip_standing_ref = float(np.percentile(hip_y_positions, 65))
+        peak_hip_rise = float(hip_standing_ref - np.min(hip_y_positions)) / target_h
+        hip_diffs = np.diff(hip_y_positions)
+        # Upward motion in pixel coordinates is negative diff (decreasing y)
+        max_upward_hip_vel = float(-np.min(hip_diffs) / target_h) if len(hip_diffs) > 0 else 0.0
+    else:
+        peak_hip_rise = 0.0
+        max_upward_hip_vel = 0.0
+
+    # Ankle vertical flight clearance & variance (feet leaving the ground)
+    ankle_elev_l = (float(np.percentile(ankle_y_l, 85) - np.min(ankle_y_l)) / target_h) if (ankle_y_l and len(ankle_y_l) >= 4) else 0.0
+    ankle_elev_r = (float(np.percentile(ankle_y_r, 85) - np.min(ankle_y_r)) / target_h) if (ankle_y_r and len(ankle_y_r) >= 4) else 0.0
+    peak_ankle_elevation = max(ankle_elev_l, ankle_elev_r)
+
+    ankle_std_l = (float(np.std(ankle_y_l)) / target_h) if (ankle_y_l and len(ankle_y_l) >= 4) else 0.0
+    ankle_std_r = (float(np.std(ankle_y_r)) / target_h) if (ankle_y_r and len(ankle_y_r) >= 4) else 0.0
+    peak_ankle_std = max(ankle_std_l, ankle_std_r)
+
+    # 1. Non-Sports check: negligible motion
+    if knee_rom < 14.0 and mean_stride < 0.07 and hip_vert_rom < 0.04 and peak_ankle_elevation < 0.025:
         return "Non-Sports / No Athletic Movement Detected"
 
-    # 3. Running / Sprinting: Alternating gait with significant stride spread or ankle elevation
-    is_alternating_gait = (mean_stride > 0.12 or max_stride > 0.22 or mean_ankle_y_diff > 0.05)
-    if is_alternating_gait:
-        if mean_stride > 0.25 or requested_activity == "Sprinting":
+    # 2. Alternating gait detection: Running / Sprinting
+    is_alternating_gait = (
+        mean_stride > 0.12 or
+        max_stride > 0.22 or
+        mean_ankle_y_diff > 0.048 or
+        (mean_abs_knee_diff > 25 and mean_stride > 0.09 and knee_corr < 0.25)
+    )
+
+    # 3. JUMPING / LANDING: Ballistic vertical excursion & flight phase
+    # In jumping, knees bend prior to takeoff (like a squat), BUT the athlete enters a true flight phase:
+    # ankles elevate off the ground and hips rise ballistically.
+    # This check MUST occur BEFORE squatting, but MUST verify flight clearance (feet leaving the floor).
+    has_flight_phase = (
+        peak_ankle_elevation > 0.026
+        or peak_ankle_std > 0.018
+        or (peak_ankle_elevation > 0.020 and max_upward_hip_vel > 0.008)
+    )
+
+    is_jumping = (
+        not is_alternating_gait and has_flight_phase and (
+            # Criterion 1: Direct ankle flight (feet left ground)
+            peak_ankle_elevation > 0.026
+            # Criterion 2: Dynamic ankle airborne variance
+            or peak_ankle_std > 0.018
+            # Criterion 3: Vertical hip excursion with flight rise
+            or (hip_vert_rom > 0.060 and peak_ankle_elevation > 0.020)
+        )
+    )
+    if is_jumping:
+        return "Jumping"
+
+    # 4. SQUATTING: Bilateral synchronous knee flexion with planted feet (NO flight phase)
+    is_squatting = (
+        not is_alternating_gait
+        and not is_jumping
+        and (knee_corr > 0.15 or mean_abs_knee_diff < 35)
+        and min_knee < 140
+        and knee_rom > 16.0
+        and mean_stride < 0.18
+        and peak_ankle_elevation <= 0.028
+        and peak_ankle_std <= 0.020
+    )
+    if is_squatting:
+        return "Squatting"
+
+    # 5. RUNNING / SPRINTING:
+    if is_alternating_gait or mean_stride > 0.11:
+        if mean_stride > 0.24 or max_stride > 0.32:
             return "Sprinting"
         return "Running"
 
-    # 4. Squatting: Requires active knee extension-flexion rep cycle (down and up, knee_rom > 25°),
-    # high bilateral knee correlation, and stationary feet
-    if knee_corr > 0.40 and min_knee < 125 and knee_rom > 25.0 and mean_stride < 0.10:
-        return "Squatting"
+    # 6. Upper Body / Throwing
+    wrist_y_all = (wrist_y_l or []) + (wrist_y_r or [])
+    if wrist_y_all and len(wrist_y_all) > 5:
+        wrist_rom = (np.max(wrist_y_all) - np.min(wrist_y_all)) / target_h
+        if wrist_rom > 0.22 and knee_rom < 25.0:
+            return "Throwing"
 
-    # 5. Jumping / Landing: High vertical hip excursion with simultaneous knee action
-    if hip_vert_rom > 0.10 and not is_alternating_gait:
+    # 7. Fallback athletic checks
+    if peak_ankle_elevation > 0.025 or hip_vert_rom > 0.07:
         return "Jumping"
-
-    # 6. Upper-body / Other sports activities
-    if requested_activity in ["Throwing", "Cutting Movements", "Sport-Specific Drills"] and knee_rom > 15.0:
-        return requested_activity
-
+    if knee_rom > 18.0 and mean_stride < 0.15:
+        return "Squatting"
     if is_alternating_gait or mean_stride > 0.08:
         return "Running"
 
@@ -166,6 +234,10 @@ def process_video_with_mediapipe(
     stride_spreads = []
     ankle_y_diffs = []
     hip_y_positions = []
+    ankle_y_positions_l = []
+    ankle_y_positions_r = []
+    wrist_y_positions_l = []
+    wrist_y_positions_r = []
     trajectory_points = []
     person_detected_frames = 0
     athletic_pose_frames = 0
@@ -271,12 +343,23 @@ def process_video_with_mediapipe(
                         valgus_angles_r.append(valg_r)
                         curr_valgus = max(curr_valgus, valg_r)
 
-                    # Stride metrics
+                    # Stride & Ankle metrics
+                    if kpts[15][2] > 0.3:
+                        ankle_y_positions_l.append(float(kpts[15][1]))
+                    if kpts[16][2] > 0.3:
+                        ankle_y_positions_r.append(float(kpts[16][1]))
+
                     if kpts[15][2] > 0.3 and kpts[16][2] > 0.3:
                         stride_spread = abs(kpts[15][0] - kpts[16][0]) / target_h
                         ankle_y_diff = abs(kpts[15][1] - kpts[16][1]) / target_h
                         stride_spreads.append(stride_spread)
                         ankle_y_diffs.append(ankle_y_diff)
+
+                    # Upper-body Wrist tracking
+                    if kpts[9][2] > 0.3:
+                        wrist_y_positions_l.append(float(kpts[9][1]))
+                    if kpts[10][2] > 0.3:
+                        wrist_y_positions_r.append(float(kpts[10][1]))
 
                     # Active Foot Trajectory Tracking (Ankles)
                     lead_ankle = kpts[15] if kpts[15][2] > kpts[16][2] else kpts[16]
@@ -353,7 +436,11 @@ def process_video_with_mediapipe(
         target_h,
         athletic_pose_frames,
         person_detected_frames,
-        activity
+        activity,
+        ankle_y_l=ankle_y_positions_l,
+        ankle_y_r=ankle_y_positions_r,
+        wrist_y_l=wrist_y_positions_l,
+        wrist_y_r=wrist_y_positions_r
     )
 
     # If the video does not contain athletic movement (e.g. video resume, interview, bust shot, talking head)
@@ -469,11 +556,24 @@ def process_video_with_mediapipe(
         
     if not recommendations:
         recommendations.append("Maintain current balanced training and recovery program.")
-        
+
+    is_auto_corrected = (
+        detected_activity != activity
+        and activity not in ["Unknown", "Auto-Detect", ""]
+        and detected_activity != "Non-Sports / No Athletic Movement Detected"
+    )
+    if is_auto_corrected:
+        risk_flags.insert(
+            0,
+            f"AI Action Auto-Correction: Vision analysis classified true athletic action as '{detected_activity}' (user selected '{activity}'). Form evaluated for {detected_activity} mechanics."
+        )
+
     return {
         "filename": filename,
         "analytics": {
             "activity_analyzed": detected_activity,
+            "user_input_activity": activity,
+            "action_auto_corrected": is_auto_corrected,
             "risk_score": final_risk_score,
             "risk_level": risk_level,
             "risk_flags": risk_flags,
@@ -492,4 +592,100 @@ def process_video_with_mediapipe(
             "fps": fps,
             "frame_count": frame_count
         }
+    }
+
+
+def compare_two_video_analyses(result_a: dict, result_b: dict) -> dict:
+    """
+    Compares two video analysis results and returns comparative metrics,
+    biomechanical diffs, and AI insights.
+    """
+    a_ana = result_a.get("analytics", {})
+    b_ana = result_b.get("analytics", {})
+
+    score_a = a_ana.get("risk_score", 0)
+    score_b = b_ana.get("risk_score", 0)
+    score_diff = round(score_b - score_a, 1)
+
+    bio_a = a_ana.get("biomechanics", {})
+    bio_b = b_ana.get("biomechanics", {})
+
+    trunk_a = bio_a.get("max_trunk_lean", 0)
+    trunk_b = bio_b.get("max_trunk_lean", 0)
+    trunk_diff = round(trunk_b - trunk_a, 2)
+
+    valgus_a = bio_a.get("max_knee_valgus", 0)
+    valgus_b = bio_b.get("max_knee_valgus", 0)
+    valgus_diff = round(valgus_b - valgus_a, 2)
+
+    asym_a = bio_a.get("movement_asymmetry", 0)
+    asym_b = bio_b.get("movement_asymmetry", 0)
+    asym_diff = round(asym_b - asym_a, 2)
+
+    probs_a = a_ana.get("injury_probabilities", {})
+    probs_b = b_ana.get("injury_probabilities", {})
+
+    prob_diffs = {}
+    all_keys = list(probs_a.keys()) if isinstance(probs_a, dict) else []
+    if isinstance(probs_b, dict):
+        for k in probs_b.keys():
+            if k not in all_keys:
+                all_keys.append(k)
+
+    for key in all_keys:
+        pa = probs_a.get(key, 0) if isinstance(probs_a, dict) else 0
+        pb = probs_b.get(key, 0) if isinstance(probs_b, dict) else 0
+        prob_diffs[key] = {
+            "video_a": pa,
+            "video_b": pb,
+            "diff": round(pb - pa, 1)
+        }
+
+    # Evaluate improvement status
+    if score_diff < -5:
+        overall_verdict = "Significant Improvement"
+        verdict_color = "emerald"
+        summary = f"Video 2 demonstrates a {abs(score_diff)} pt reduction in injury risk compared to Video 1. Posture and kinetic stability improved."
+    elif score_diff > 5:
+        overall_verdict = "Elevated Risk / Degradation"
+        verdict_color = "rose"
+        summary = f"Video 2 exhibits an increase in risk score (+{score_diff} pts). Watch for heightened biomechanical strain or fatigue indicators."
+    else:
+        overall_verdict = "Consistent Performance"
+        verdict_color = "amber"
+        summary = "Movement mechanics are closely matched between both videos with minor variation."
+
+    # Identify key biomechanical changes
+    insights = []
+    if valgus_diff < -3:
+        insights.append(f"Knee valgus decreased by {abs(valgus_diff)}°, lowering medial collateral and ACL shear stress.")
+    elif valgus_diff > 3:
+        insights.append(f"Knee valgus increased by {valgus_diff}°, suggesting medial knee collapse during ground contact.")
+
+    if trunk_diff < -4:
+        insights.append(f"Trunk lean reduced by {abs(trunk_diff)}°, showing improved core bracing and spinal alignment.")
+    elif trunk_diff > 4:
+        insights.append(f"Trunk lean increased by {trunk_diff}°, indicating upper body fatigue or compensatory movement.")
+
+    if asym_diff < -3:
+        insights.append(f"Bilateral limb symmetry improved by {abs(asym_diff)}°, balancing joint loading across both legs.")
+    elif asym_diff > 3:
+        insights.append(f"Asymmetry increased by {asym_diff}°, indicating potential limb favoring or muscle tightness.")
+
+    if not insights:
+        insights.append("Kinetic parameters remained stable across both movement sets.")
+
+    return {
+        "score_diff": score_diff,
+        "overall_verdict": overall_verdict,
+        "verdict_color": verdict_color,
+        "summary": summary,
+        "insights": insights,
+        "metrics_diff": {
+            "risk_score": {"video_a": score_a, "video_b": score_b, "diff": score_diff},
+            "trunk_lean": {"video_a": trunk_a, "video_b": trunk_b, "diff": trunk_diff},
+            "knee_valgus": {"video_a": valgus_a, "video_b": valgus_b, "diff": valgus_diff},
+            "asymmetry": {"video_a": asym_a, "video_b": asym_b, "diff": asym_diff},
+        },
+        "injury_probabilities_comparison": prob_diffs
     }
