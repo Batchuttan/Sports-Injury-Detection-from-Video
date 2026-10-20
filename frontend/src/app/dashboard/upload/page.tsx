@@ -223,22 +223,28 @@ export default function VideoUploadPage() {
                   autoPlay
                   muted
                   playsInline
-                  preload="auto"
-                  className="w-full h-full object-contain"
+                  disablePictureInPicture
+                  preload="metadata"
+                  className="w-full h-full object-contain transform-gpu"
+                  style={{ transform: "translateZ(0)", willChange: "transform", backfaceVisibility: "hidden" }}
                   src={`${API_URL}${result.processed_url}`}
                 >
                   Your browser does not support HTML5 video playback.
                 </video>
-                <div className={`absolute top-3 left-3 px-2 py-1 bg-black/60 backdrop-blur-md rounded border text-xs text-white flex items-center gap-2 ${result.analytics.anomaly_detected ? 'border-rose-500/50' : 'border-white/10'}`}>
+                <div className={`absolute top-3 left-3 px-2.5 py-1 bg-slate-950/85 rounded-lg border text-xs text-white flex items-center gap-2 ${result.analytics.anomaly_detected ? 'border-rose-500/50' : 'border-white/10'}`}>
                   <span className={`w-2 h-2 rounded-full ${result.analytics.anomaly_detected ? 'bg-rose-500 animate-pulse' : 'bg-green-500'}`}></span>
-                  {result.analytics.anomaly_detected ? 'Anomaly Detected' : 'Motion Enhanced'}
+                  {result.analytics.anomaly_detected ? 'Anomaly Detected' : 'Motion Tracking Active'}
                 </div>
-                <div className="absolute top-3 right-3">
+                <div className="absolute top-3 right-3 flex items-center gap-2">
+                  <span className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-semibold rounded-md">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    ⚡ Smooth 30 FPS Stream
+                  </span>
                   <a
                     href={`${API_URL}${result.processed_url}`}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="px-2.5 py-1 bg-slate-900/80 hover:bg-slate-800 text-xs text-indigo-300 hover:text-white rounded border border-indigo-500/30 backdrop-blur-md transition-colors"
+                    className="px-2.5 py-1 bg-slate-900/90 hover:bg-slate-800 text-xs text-indigo-300 hover:text-white rounded border border-indigo-500/30 transition-colors"
                   >
                     Open Raw ↗
                   </a>

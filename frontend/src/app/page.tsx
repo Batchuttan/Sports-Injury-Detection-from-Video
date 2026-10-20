@@ -21,7 +21,6 @@ export default function Home() {
   const [forgotLoading, setForgotLoading] = useState(false);
   const [forgotSuccess, setForgotSuccess] = useState("");
   const [forgotError, setForgotError] = useState("");
-  const [forgotResetUrl, setForgotResetUrl] = useState<string | null>(null);
 
   const router = useRouter();
 
@@ -100,22 +99,18 @@ export default function Home() {
     e.preventDefault();
     setForgotError("");
     setForgotSuccess("");
-    setForgotResetUrl(null);
 
-    if (!forgotEmail) {
-      setForgotError("Please enter your registered email address.");
+    if (!forgotEmail || !forgotEmail.includes("@")) {
+      setForgotError("Please enter a valid email address.");
       return;
     }
 
     setForgotLoading(true);
     try {
       const res = await forgotPassword(forgotEmail);
-      setForgotSuccess(res.message || "Password reset link has been dispatched to your email!");
-      if (res.reset_url) {
-        setForgotResetUrl(res.reset_url);
-      }
+      setForgotSuccess(res.message || "A secure password reset link has been dispatched to your email address!");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to send reset link.";
+      const msg = err instanceof Error ? err.message : "Failed to dispatch reset email. Please try again.";
       setForgotError(msg);
     } finally {
       setForgotLoading(false);
@@ -185,24 +180,7 @@ export default function Home() {
                 </div>
 
                 <div className="space-y-1">
-                  <div className="flex justify-between items-center">
-                    <label className="text-sm font-medium text-slate-300">Password</label>
-                    {isLogin && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setForgotEmail(email);
-                          setForgotError("");
-                          setForgotSuccess("");
-                          setForgotResetUrl(null);
-                          setShowForgotModal(true);
-                        }}
-                        className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors font-medium"
-                      >
-                        Forgot password?
-                      </button>
-                    )}
-                  </div>
+                  <label className="text-sm font-medium text-slate-300">Password</label>
                   <div className="relative">
                     <input
                       type={showPassword ? "text" : "password"}
@@ -244,7 +222,18 @@ export default function Home() {
                       <input type="checkbox" className="rounded border-slate-700 bg-slate-900/50 text-indigo-500 focus:ring-indigo-500/30" />
                       <span className="text-slate-400">Remember me</span>
                     </label>
-                    <a href="#" className="text-indigo-400 hover:text-indigo-300 transition-colors">Forgot password?</a>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setForgotEmail(email);
+                        setForgotError("");
+                        setForgotSuccess("");
+                        setShowForgotModal(true);
+                      }}
+                      className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors font-medium"
+                    >
+                      Forgot password?
+                    </button>
                   </div>
                 )}
 
@@ -293,110 +282,151 @@ export default function Home() {
 
       {/* Forgot Password Modal */}
       {showForgotModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn">
-          <div className="w-full max-w-md glass-panel bg-slate-900/95 border border-slate-800 rounded-2xl p-6 shadow-2xl relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-fadeIn">
+          <div className="w-full max-w-md glass-panel bg-slate-900/95 border border-slate-700/80 rounded-3xl p-7 shadow-[0_25px_50px_-12px_rgba(0,0,0,0.8),0_0_30px_rgba(79,70,229,0.15)] relative overflow-hidden">
+            {/* Top accent gradient bar */}
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
+
             <button
               onClick={() => setShowForgotModal(false)}
-              className="absolute right-4 top-4 text-slate-400 hover:text-white transition-colors"
+              className="absolute right-4 top-4 p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800/60 transition-colors"
+              aria-label="Close dialog"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
 
-            <div className="text-center mb-5">
-              <div className="w-12 h-12 bg-indigo-500/10 text-indigo-400 rounded-xl flex items-center justify-center mx-auto mb-3 border border-indigo-500/20">
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
-                </svg>
-              </div>
-              <h3 className="text-xl font-bold text-white mb-1">Reset Account Password</h3>
-              <p className="text-slate-400 text-sm">
-                Enter your registered email. We will send a secure one-time link to change your password.
-              </p>
-            </div>
-
-            {forgotError && (
-              <div className="p-3 mb-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-sm">
-                {forgotError}
-              </div>
-            )}
-
             {forgotSuccess ? (
-              <div className="space-y-4">
-                <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-sm space-y-2">
-                  <div className="font-semibold flex items-center gap-2">
-                    <svg className="w-5 h-5 text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+              /* Success View - Directs user strictly to check their external email inbox */
+              <div className="pt-2 text-center space-y-5 animate-fadeIn">
+                <div className="relative mx-auto w-16 h-16 flex items-center justify-center">
+                  <div className="absolute inset-0 rounded-full bg-emerald-500/20 blur-md animate-pulse" />
+                  <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-tr from-emerald-600/30 to-teal-500/20 border border-emerald-500/40 text-emerald-400 flex items-center justify-center shadow-lg">
+                    <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                     </svg>
-                    Email Dispatched!
+                    <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 rounded-full flex items-center justify-center text-slate-950">
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
                   </div>
-                  <p className="text-xs text-slate-300 leading-relaxed">
-                    A secure password reset link has been dispatched to <strong>{forgotEmail}</strong>. Please check your inbox and click the link to confirm your new password.
+                </div>
+
+                <div>
+                  <h3 className="text-xl font-extrabold text-white">Reset Link Dispatched</h3>
+                  <p className="text-slate-400 text-xs mt-1">
+                    Please check your mailbox to continue
                   </p>
                 </div>
 
-                {forgotResetUrl && (
-                  <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 space-y-2">
-                    <div className="text-xs font-semibold text-indigo-300 uppercase tracking-wide">
-                      Instant Access Link:
-                    </div>
-                    <Link
-                      href={forgotResetUrl}
-                      onClick={() => setShowForgotModal(false)}
-                      className="block w-full py-2.5 px-3 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold text-center rounded-lg transition-colors shadow-md"
-                    >
-                      Click Here to Open Reset Page &rarr;
-                    </Link>
+                <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 text-left space-y-2.5">
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    We sent an official password reset email to:
+                  </p>
+                  <div className="px-3 py-2 bg-indigo-500/10 border border-indigo-500/30 rounded-xl text-center">
+                    <span className="font-semibold text-indigo-300 text-sm break-all">{forgotEmail}</span>
                   </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setShowForgotModal(false)}
-                  className="w-full py-3 px-4 bg-slate-800 hover:bg-slate-700 text-white font-medium rounded-xl text-sm transition-colors"
-                >
-                  Close
-                </button>
-              </div>
-            ) : (
-              <form onSubmit={handleForgotSubmit} className="space-y-4">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider">Email Address</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="athlete@team.com"
-                    value={forgotEmail}
-                    onChange={(e) => setForgotEmail(e.target.value)}
-                    className="w-full px-4 py-3 bg-slate-950 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-slate-100 placeholder:text-slate-600 text-sm"
-                  />
+                  <div className="pt-1 flex items-start gap-2 text-[11px] text-slate-400 leading-snug">
+                    <svg className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>
+                      Open your email provider and click the button or link inside. The link is secure and valid for <strong>30 minutes</strong>.
+                    </span>
+                  </div>
                 </div>
 
-                <div className="pt-2 flex gap-3">
+                <div className="pt-2 space-y-2.5">
                   <button
                     type="button"
                     onClick={() => setShowForgotModal(false)}
-                    className="flex-1 py-3 px-4 bg-slate-800 hover:bg-slate-700 text-slate-300 font-medium rounded-xl text-sm transition-colors"
+                    className="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-xl text-sm transition-all shadow-[0_0_20px_rgba(79,70,229,0.35)] hover:shadow-[0_0_25px_rgba(79,70,229,0.5)]"
                   >
-                    Cancel
+                    Return to Sign In
                   </button>
+
                   <button
-                    type="submit"
-                    disabled={forgotLoading}
-                    className="flex-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold rounded-xl text-sm transition-all shadow-[0_0_15px_rgba(79,70,229,0.4)] flex items-center justify-center gap-2"
+                    type="button"
+                    onClick={() => {
+                      setForgotSuccess("");
+                      setForgotError("");
+                    }}
+                    className="text-xs text-slate-400 hover:text-slate-200 transition-colors"
                   >
-                    {forgotLoading ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Sending...
-                      </>
-                    ) : (
-                      "Send Link"
-                    )}
+                    Entered wrong email? Try again
                   </button>
                 </div>
-              </form>
+              </div>
+            ) : (
+              /* Email Input Form */
+              <div className="pt-1 space-y-5">
+                <div className="text-center">
+                  <div className="w-12 h-12 bg-indigo-500/15 text-indigo-400 rounded-2xl flex items-center justify-center mx-auto mb-3 border border-indigo-500/30 shadow-[0_0_20px_rgba(79,70,229,0.2)]">
+                    <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z" />
+                    </svg>
+                  </div>
+                  <h3 className="text-xl font-extrabold text-white">Reset Account Password</h3>
+                  <p className="text-slate-400 text-xs mt-1 max-w-sm mx-auto leading-relaxed">
+                    Provide the email associated with your account. A secure password reset link will be sent to your inbox.
+                  </p>
+                </div>
+
+                {forgotError && (
+                  <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 text-xs flex items-center gap-2">
+                    <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <span>{forgotError}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleForgotSubmit} className="space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                      <svg className="w-3.5 h-3.5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 12a4 4 0 10-8 0 4 4 0 008 0zm0 0v1.5a2.5 2.5 0 005 0V12a9 9 0 10-9 9m4.5-1.206a8.959 8.959 0 01-4.5 1.206" />
+                      </svg>
+                      Account Email
+                    </label>
+                    <input
+                      type="email"
+                      required
+                      placeholder="athlete@team.com"
+                      value={forgotEmail}
+                      onChange={(e) => setForgotEmail(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-950/80 border border-slate-700/80 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 text-slate-100 placeholder:text-slate-600 text-sm transition-all"
+                      autoFocus
+                    />
+                  </div>
+
+                  <div className="pt-2 flex gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setShowForgotModal(false)}
+                      className="flex-1 py-3 px-4 bg-slate-800/80 hover:bg-slate-800 text-slate-300 font-semibold rounded-xl text-sm transition-colors border border-slate-700"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={forgotLoading}
+                      className="flex-1 py-3 px-4 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-bold rounded-xl text-sm transition-all shadow-[0_0_15px_rgba(79,70,229,0.4)] hover:shadow-[0_0_20px_rgba(79,70,229,0.6)] flex items-center justify-center gap-2"
+                    >
+                      {forgotLoading ? (
+                        <>
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span>Dispatching...</span>
+                        </>
+                      ) : (
+                        <span>Send Link</span>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              </div>
             )}
           </div>
         </div>

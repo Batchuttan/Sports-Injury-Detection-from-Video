@@ -200,9 +200,12 @@ export default function ComparePage() {
       vB?.pause();
       setIsPlaying(false);
     } else {
-      vA?.play();
-      vB?.play();
-      setIsPlaying(true);
+      Promise.all([
+        vA ? vA.play().catch(() => { }) : Promise.resolve(),
+        vB ? vB.play().catch(() => { }) : Promise.resolve()
+      ]).then(() => {
+        setIsPlaying(true);
+      });
     }
   };
 
@@ -613,12 +616,16 @@ export default function ComparePage() {
           {(comparisonResult.video_a.processed_url || comparisonResult.video_b.processed_url) && (
             <div className="glass-panel p-6 rounded-2xl border border-slate-800 space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
                   <svg className="w-5 h-5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
                   <h4 className="text-base font-bold text-white">Synchronized Movement Playback</h4>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[10px] font-semibold rounded-md">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+                    ⚡ Low-Latency Hardware Accelerated (GMeet Ready)
+                  </span>
                 </div>
 
                 {/* Master Playback Controls */}
@@ -686,7 +693,11 @@ export default function ComparePage() {
                         src={`${API_URL}${comparisonResult.video_a.processed_url}`}
                         controls
                         playsInline
-                        className="w-full h-full object-contain"
+                        preload="metadata"
+                        disablePictureInPicture
+                        onEnded={() => setIsPlaying(false)}
+                        className="w-full h-full object-contain transform-gpu"
+                        style={{ transform: "translateZ(0)", willChange: "transform", backfaceVisibility: "hidden" }}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs">
@@ -720,7 +731,11 @@ export default function ComparePage() {
                         src={`${API_URL}${comparisonResult.video_b.processed_url}`}
                         controls
                         playsInline
-                        className="w-full h-full object-contain"
+                        preload="metadata"
+                        disablePictureInPicture
+                        onEnded={() => setIsPlaying(false)}
+                        className="w-full h-full object-contain transform-gpu"
+                        style={{ transform: "translateZ(0)", willChange: "transform", backfaceVisibility: "hidden" }}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-slate-500 text-xs">

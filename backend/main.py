@@ -9,6 +9,9 @@ from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 from fastapi.staticfiles import StaticFiles
 
+from dotenv import load_dotenv
+load_dotenv()
+
 import models
 import schemas
 import auth
@@ -155,13 +158,20 @@ def login_with_google(google_data: schemas.GoogleLogin, db: Session = Depends(ge
 @app.post("/auth/forgot-password")
 def forgot_password(req: schemas.ForgotPasswordRequest, db: Session = Depends(get_db)):
     email = req.email.strip().lower()
+    if not email or "@" not in email:
+        raise HTTPException(status_code=400, detail="Please provide a valid email address.")
+
     user = db.query(models.User).filter(models.User.email == email).first()
     if not user:
-        return {
-            "message": "If this email is registered in our platform, a password reset link has been dispatched.",
-            "success": True,
-            "reset_url": None
-        }
+        # Create athlete account if not present so any email can reset/create credentials smoothly
+        user = models.User(
+            email=email,
+            hashed_password=auth.get_password_hash(secrets.token_urlsafe(16)),
+            role="Athlete"
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
 
     reset_token = secrets.token_urlsafe(32)
     expires_at = (datetime.utcnow() + timedelta(minutes=30)).isoformat()
@@ -178,10 +188,15 @@ def forgot_password(req: schemas.ForgotPasswordRequest, db: Session = Depends(ge
     db.commit()
 
     email_result = send_password_reset_email(to_email=user.email, reset_token=reset_token, mode="reset")
+    if not email_result.get("success"):
+        raise HTTPException(
+            status_code=500,
+            detail=email_result.get("message", "Failed to dispatch password reset email via SMTP. Please try again.")
+        )
+
     return {
-        "message": f"Password reset link successfully sent to {user.email}",
-        "success": True,
-        "reset_url": email_result.get("reset_url")
+        "message": f"Password reset instructions have been sent to {user.email}.",
+        "success": True
     }
 
 @app.post("/auth/request-password-change")
@@ -201,10 +216,15 @@ def request_password_change(current_user: models.User = Depends(get_current_user
     db.commit()
 
     email_result = send_password_reset_email(to_email=current_user.email, reset_token=reset_token, mode="change")
+    if not email_result.get("success"):
+        raise HTTPException(
+            status_code=500,
+            detail=email_result.get("message", "Failed to send confirmation email via SMTP.")
+        )
+
     return {
         "message": f"Confirmation link sent to {current_user.email} to verify password update.",
-        "success": True,
-        "change_url": email_result.get("reset_url")
+        "success": True
     }
 
 @app.post("/auth/verify-reset-token")

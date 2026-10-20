@@ -17,7 +17,6 @@ export default function SettingsPage() {
   const [requestingPasswordChange, setRequestingPasswordChange] = useState(false);
   const [passwordChangeSuccess, setPasswordChangeSuccess] = useState("");
   const [passwordChangeError, setPasswordChangeError] = useState("");
-  const [passwordChangeUrl, setPasswordChangeUrl] = useState<string | null>(null);
 
   useEffect(() => {
     const fetched = getUserFromToken();
@@ -29,7 +28,6 @@ export default function SettingsPage() {
   const handleRequestPasswordChange = async () => {
     setPasswordChangeError("");
     setPasswordChangeSuccess("");
-    setPasswordChangeUrl(null);
     setRequestingPasswordChange(true);
 
     try {
@@ -38,9 +36,6 @@ export default function SettingsPage() {
 
       const res = await requestPasswordChange(token);
       setPasswordChangeSuccess(res.message || "A secure confirmation link was sent to your email!");
-      if (res.change_url) {
-        setPasswordChangeUrl(res.change_url);
-      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to initiate password change.";
       setPasswordChangeError(msg);
@@ -111,20 +106,6 @@ export default function SettingsPage() {
             <p className="text-xs text-slate-300 leading-relaxed">
               We have dispatched a verification email to <strong>{user?.email || "your registered address"}</strong> containing a secure link valid for 30 minutes. Click the link in your email to confirm and submit your new password.
             </p>
-
-            {passwordChangeUrl && (
-              <div className="pt-2 border-t border-emerald-500/20">
-                <div className="text-xs font-semibold text-indigo-300 uppercase tracking-wider mb-2">
-                  Direct Verification Link:
-                </div>
-                <Link
-                  href={passwordChangeUrl}
-                  className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition-all shadow-md"
-                >
-                  Click Here to Open Password Change Passage &rarr;
-                </Link>
-              </div>
-            )}
           </div>
         )}
 
