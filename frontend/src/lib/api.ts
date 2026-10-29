@@ -1,4 +1,7 @@
-export const API_URL = "http://127.0.0.1:8000";
+export const API_URL =
+  typeof window !== "undefined" && window.location.hostname === "localhost"
+    ? "http://localhost:8000"
+    : "http://127.0.0.1:8000";
 
 export const register = async (email: string, password: string, role: string) => {
   const response = await fetch(`${API_URL}/register`, {
@@ -184,11 +187,91 @@ export const getPerformanceRecords = async (token: string) => {
   return response.json();
 };
 
-export const getAnalyses = async (token: string) => {
-  const response = await fetch(`${API_URL}/athlete/analyses`, {
+export const getAnalyses = async (token: string, overviewOnly: boolean = false) => {
+  const url = overviewOnly ? `${API_URL}/athlete/analyses?overview_only=true` : `${API_URL}/athlete/analyses`;
+  const response = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) throw new Error("Failed to fetch analyses");
+  return response.json();
+};
+
+export const clearOverviewAnalyses = async (token: string) => {
+  const response = await fetch(`${API_URL}/athlete/analyses/clear-overview`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to clear overview reports");
+  return response.json();
+};
+
+export const restoreOverviewAnalyses = async (token: string) => {
+  const response = await fetch(`${API_URL}/athlete/analyses/restore-overview`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to restore overview reports");
+  return response.json();
+};
+
+export const deleteAnalyses = async (token: string, analysisIds: number[]) => {
+  const response = await fetch(`${API_URL}/athlete/analyses/delete`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ analysis_ids: analysisIds }),
+  });
+  if (!response.ok) throw new Error("Failed to delete analyses");
+  return response.json();
+};
+
+export const getActivityRecommendations = async (token: string, activity: string, riskLevel: string = "High Risk") => {
+  const response = await fetch(`${API_URL}/recommendations/${encodeURIComponent(activity)}?risk_level=${encodeURIComponent(riskLevel)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to fetch activity recommendations");
+  return response.json();
+};
+
+export const downloadAnalysisPdf = async (token: string, analysisId: number, filename: string = "SportsAI_Report.pdf") => {
+  const response = await fetch(`${API_URL}/athlete/analyses/${analysisId}/export/pdf?token=${encodeURIComponent(token)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to export PDF report");
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+export const downloadAnalysisCsv = async (token: string, analysisId: number, filename: string = "SportsAI_Report.xlsx", format: string = "xlsx") => {
+  const response = await fetch(`${API_URL}/athlete/analyses/${analysisId}/export/csv?token=${encodeURIComponent(token)}&format=${format}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to export spreadsheet report");
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+export const getSingleAnalysis = async (token: string, analysisId: number) => {
+  const response = await fetch(`${API_URL}/athlete/analyses/${analysisId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to fetch analysis details");
   return response.json();
 };
 
@@ -202,6 +285,27 @@ export const getNotifications = async (token: string) => {
   } catch {
     return [];
   }
+};
+
+export const deleteNotification = async (token: string, notificationId: number) => {
+  try {
+    const response = await fetch(`${API_URL}/notifications/${notificationId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return response.json();
+  } catch {
+    return { success: false };
+  }
+};
+
+export const clearAllNotifications = async (token: string) => {
+  const response = await fetch(`${API_URL}/notifications/clear-all`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to clear notifications");
+  return response.json();
 };
 
 export const forgotPassword = async (email: string) => {
@@ -291,3 +395,245 @@ export const compareExistingAnalyses = async (token: string, analysisIdA: number
   }
   return response.json();
 };
+
+export const getUserSettings = async (token: string) => {
+  try {
+    const response = await fetch(`${API_URL}/user/settings`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!response.ok) {
+      return {
+        email_alerts: true,
+        daily_wellness: true,
+        sound_effects: false,
+        profile_picture: typeof window !== "undefined" ? localStorage.getItem("user_avatar") || "" : ""
+      };
+    }
+    return await response.json();
+  } catch (err) {
+    console.warn("getUserSettings connection attempt warning:", err);
+    return {
+      email_alerts: true,
+      daily_wellness: true,
+      sound_effects: false,
+      profile_picture: typeof window !== "undefined" ? localStorage.getItem("user_avatar") || "" : ""
+    };
+  }
+};
+
+export const updateUserSettings = async (token: string, settingsData: Record<string, unknown>) => {
+  const response = await fetch(`${API_URL}/user/settings`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(settingsData),
+  });
+  if (!response.ok) throw new Error("Failed to update user settings");
+  return response.json();
+};
+
+export const uploadUserAvatar = async (token: string, file: File) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch(`${API_URL}/user/avatar`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (!response.ok) throw new Error("Failed to upload avatar photo");
+  return response.json();
+};
+
+export const getTrainingPlans = async (token: string, includeCompleted: boolean = false, statusFilter: string = "active") => {
+  const params = new URLSearchParams();
+  if (includeCompleted) params.append("include_completed", "true");
+  if (statusFilter) params.append("status_filter", statusFilter);
+  const queryStr = params.toString() ? `?${params.toString()}` : "";
+  const response = await fetch(`${API_URL}/training/plans${queryStr}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to load training plans");
+  return response.json();
+};
+
+export const getTrainingPlanDetail = async (token: string, planIdentifier: string) => {
+  const response = await fetch(`${API_URL}/training/plans/${planIdentifier}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to load training plan details");
+  return response.json();
+};
+
+export const toggleTrainingPlanTask = async (token: string, planIdentifier: string, exerciseName: string, completed: boolean) => {
+  const response = await fetch(`${API_URL}/training/plans/${planIdentifier}/toggle-task`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ exercise_name: exerciseName, completed }),
+  });
+  if (!response.ok) throw new Error("Failed to toggle exercise task");
+  return response.json();
+};
+
+export const reactivateTrainingPlan = async (token: string, planIdentifier: string) => {
+  const response = await fetch(`${API_URL}/training/plans/${planIdentifier}/reactivate`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to reactivate training plan");
+  return response.json();
+};
+
+export const updateTrainingPlan = async (token: string, planIdentifier: string, updateData: Record<string, unknown>) => {
+  const response = await fetch(`${API_URL}/training/plans/${planIdentifier}`, {
+    method: "PUT",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(updateData),
+  });
+  if (!response.ok) throw new Error("Failed to update training plan");
+  return response.json();
+};
+
+export const getDualComparisons = async (token: string) => {
+  const response = await fetch(`${API_URL}/athlete/comparisons`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to fetch dual video comparison reports");
+  return response.json();
+};
+
+export const getSingleDualComparison = async (token: string, comparisonId: number) => {
+  const response = await fetch(`${API_URL}/athlete/comparisons/${comparisonId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to fetch single dual comparison detail");
+  return response.json();
+};
+
+export const deleteDualComparisons = async (token: string, comparisonIds: number[]) => {
+  const response = await fetch(`${API_URL}/athlete/comparisons/delete`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ comparison_ids: comparisonIds }),
+  });
+  if (!response.ok) throw new Error("Failed to delete dual comparison reports");
+  return response.json();
+};
+
+export const downloadDualComparisonPdf = async (token: string, comparisonId: number, filename: string = "SportsAI_Dual_Report.pdf") => {
+  const response = await fetch(`${API_URL}/athlete/comparisons/${comparisonId}/export/pdf?token=${encodeURIComponent(token)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to export dual comparison PDF report");
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+export const downloadDualComparisonCsv = async (token: string, comparisonId: number, filename: string = "SportsAI_Dual_Report.xlsx", format: string = "xlsx") => {
+  const response = await fetch(`${API_URL}/athlete/comparisons/${comparisonId}/export/csv?token=${encodeURIComponent(token)}&format=${format}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to export dual comparison spreadsheet report");
+  const blob = await response.blob();
+  const url = window.URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  window.URL.revokeObjectURL(url);
+};
+
+// Coach Endpoints
+export const getTeamMonitoring = async (token: string) => {
+  const response = await fetch(`${API_URL}/coach/team-monitoring`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to load team monitoring");
+  return response.json();
+};
+
+export const getWorkloadAlerts = async (token: string) => {
+  const response = await fetch(`${API_URL}/coach/workload-alerts`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to load workload alerts");
+  return response.json();
+};
+
+// Physio Endpoints
+export const getRecoveryStatus = async (token: string) => {
+  const response = await fetch(`${API_URL}/physio/recovery-status`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to load recovery status");
+  return response.json();
+};
+
+// Sports Scientist Endpoints
+export const getScientistInsights = async (token: string) => {
+  const response = await fetch(`${API_URL}/scientist/biomechanical-insights`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to load biomechanical insights");
+  return response.json();
+};
+
+// Admin Endpoints
+export const getAdminUsers = async (token: string) => {
+  const response = await fetch(`${API_URL}/admin/users`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to load users");
+  return response.json();
+};
+
+export const updateUserRole = async (token: string, userId: number, role: string) => {
+  const response = await fetch(`${API_URL}/admin/users/${userId}/role`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ role }),
+  });
+  if (!response.ok) throw new Error("Failed to update user role");
+  return response.json();
+};
+
+export const deleteUser = async (token: string, userId: number) => {
+  const response = await fetch(`${API_URL}/admin/users/${userId}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to delete user");
+  return response.json();
+};
+
+export const getAdminPlatformStats = async (token: string) => {
+  const response = await fetch(`${API_URL}/admin/platform-stats`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Failed to load platform statistics");
+  return response.json();
+};
+
+

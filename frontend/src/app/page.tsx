@@ -120,8 +120,8 @@ export default function Home() {
   return (
     <main className="flex-grow flex flex-col items-center justify-center relative overflow-hidden">
       {/* Background decoration */}
-      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-600/20 blur-[120px]" />
-      <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-pink-600/20 blur-[120px]" />
+      <div className="absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full bg-indigo-600/20 blur-[120px] pointer-events-none transform-gpu" style={{ willChange: "transform" }} />
+      <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full bg-pink-600/20 blur-[120px] pointer-events-none transform-gpu" style={{ willChange: "transform" }} />
 
       <div className="z-10 w-full max-w-5xl px-6 py-20 flex flex-col md:flex-row items-center gap-12">
 

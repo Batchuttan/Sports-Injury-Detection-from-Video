@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Any
 
 # User Schemas
 class UserBase(BaseModel):
@@ -11,8 +11,18 @@ class UserCreate(UserBase):
 
 class UserResponse(UserBase):
     id: int
+    profile_picture: Optional[str] = None
+    email_alerts: Optional[int] = 1
+    daily_wellness: Optional[int] = 1
+    sound_effects: Optional[int] = 0
     class Config:
         from_attributes = True
+
+class UserSettingsUpdate(BaseModel):
+    email_alerts: Optional[bool] = None
+    daily_wellness: Optional[bool] = None
+    sound_effects: Optional[bool] = None
+    profile_picture: Optional[str] = None
 
 # Athlete Schemas
 class AthleteProfileBase(BaseModel):
@@ -23,6 +33,11 @@ class AthleteProfileBase(BaseModel):
     weight: float
     injury_history: Optional[str] = None
     training_load: Optional[str] = None
+    phone: Optional[str] = None
+    dominant_side: Optional[str] = None
+    emergency_contact: Optional[str] = None
+    personal_bio: Optional[str] = None
+    profile_picture: Optional[str] = None
 
 class AthleteProfileCreate(AthleteProfileBase):
     pass
@@ -85,8 +100,12 @@ class VideoAnalysisResponse(BaseModel):
     risk_level: str
     injury_probabilities: str
     corrective_recommendation: str
+    actions_detected: Optional[str] = None
+    kinematics: Optional[str] = None
+    video_url: Optional[str] = None
+    is_cleared_from_overview: Optional[int] = 0
     created_at: str
-    class ConfigDict:
+    class Config:
         from_attributes = True
 
 class NotificationResponse(BaseModel):
@@ -118,3 +137,49 @@ class ChangePasswordRequest(BaseModel):
 class CompareExistingRequest(BaseModel):
     analysis_id_a: int
     analysis_id_b: int
+
+class DeleteAnalysesRequest(BaseModel):
+    analysis_ids: list[int]
+
+class DeleteComparisonsRequest(BaseModel):
+    comparison_ids: list[int]
+
+# Training Plan Schemas
+class TrainingPlanResponse(BaseModel):
+    id: int
+    user_id: Optional[int] = None
+    plan_id: str
+    title: str
+    duration: str
+    status: str
+    focus: Optional[str] = None
+    target_joint: Optional[str] = None
+    description: Optional[str] = None
+    prescribed_exercises: str
+    exercises_detail: Optional[str] = None
+    weekly_schedule: Optional[str] = None
+    clinical_notes: Optional[str] = None
+    progress_percent: Optional[int] = 0
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+    class Config:
+        from_attributes = True
+
+class TrainingPlanUpdate(BaseModel):
+    status: Optional[str] = None
+    progress_percent: Optional[int] = None
+    exercises_detail: Optional[str] = None
+
+class TogglePlanTaskRequest(BaseModel):
+    exercise_name: str
+    completed: bool
+
+class RoleUpdateRequest(BaseModel):
+    role: str
+
+class NotificationCreate(BaseModel):
+    title: str
+    message: str
+    type: Optional[str] = "info"
+    user_id: Optional[int] = None
+

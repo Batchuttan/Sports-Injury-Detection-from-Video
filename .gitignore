@@ -23,5 +23,12 @@ backend/*.db-wal
 backend/*.db-shm
 backend/uploads/
 backend/processed/
+*.db
+*.db-wal
+*.db-shm
+processed/
+uploads/
+*.mp4
 *.pt
 .venv/
+update_dashboard.py

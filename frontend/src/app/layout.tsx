@@ -13,6 +13,7 @@ export const metadata: Metadata = {
 };
 
 import { GoogleOAuthProvider } from "@react-oauth/google";
+import SmoothScroll from "@/components/SmoothScroll";
 
 export default function RootLayout({
   children,
@@ -26,7 +27,9 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} antialiased`}>
       <body className="min-h-screen bg-slate-950 text-slate-50 flex flex-col font-sans">
         <GoogleOAuthProvider clientId={clientId}>
-          {children}
+          <SmoothScroll>
+            {children}
+          </SmoothScroll>
         </GoogleOAuthProvider>
       </body>
     </html>
