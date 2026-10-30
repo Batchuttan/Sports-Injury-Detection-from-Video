@@ -40,20 +40,63 @@ export const login = async (email: string, password: string) => {
   return response.json();
 };
 
-export const googleLogin = async (email: string, role: string = "Athlete") => {
+export const getDeviceAccounts = async (): Promise<Array<{ email: string; role: string }>> => {
+  try {
+    const response = await fetch(`${API_URL}/auth/device-accounts`);
+    if (!response.ok) return [];
+    return await response.json();
+  } catch {
+    return [];
+  }
+};
+
+export interface GoogleAuthResponse {
+  success: boolean;
+  notRegistered?: boolean;
+  email?: string;
+  message?: string;
+  access_token?: string;
+  token_type?: string;
+}
+
+export const googleLogin = async (
+  email: string,
+  role: string = "Athlete",
+  action: "login" | "register" = "login"
+): Promise<GoogleAuthResponse> => {
   const response = await fetch(`${API_URL}/auth/google`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ email, role }),
+    body: JSON.stringify({ email, role, action }),
   });
 
-  if (!response.ok) {
-    throw new Error("Google login failed");
+  const data = await response.json().catch(() => ({}));
+
+  if (response.status === 404) {
+    return {
+      success: false,
+      notRegistered: true,
+      email: email,
+      message: data?.detail || "No registered account found for this Google email. Please register your account.",
+    };
   }
 
-  return response.json();
+  if (!response.ok) {
+    return {
+      success: false,
+      notRegistered: false,
+      email: email,
+      message: data?.detail || "Google authentication failed",
+    };
+  }
+
+  return {
+    success: true,
+    access_token: data.access_token,
+    token_type: data.token_type,
+  };
 };
 
 export const getMe = async (token: string) => {
@@ -443,6 +486,21 @@ export const uploadUserAvatar = async (token: string, file: File) => {
     body: formData,
   });
   if (!response.ok) throw new Error("Failed to upload avatar photo");
+  return response.json();
+};
+
+export const uploadUserSound = async (token: string, file: File) => {
+  const formData = new FormData();
+  formData.append("file", file);
+  const response = await fetch(`${API_URL}/user/upload-sound`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: formData,
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.detail || "Failed to upload custom sound");
+  }
   return response.json();
 };
 

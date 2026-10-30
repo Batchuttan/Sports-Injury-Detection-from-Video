@@ -51,8 +51,13 @@ export default function DashboardLayout({
     } else {
       setTimeout(() => {
         setUser(fetchedUser);
-        const savedRole = localStorage.getItem("preview_role") || fetchedUser.role;
-        setActiveRole(savedRole);
+        if (fetchedUser.role === "Administrator") {
+          const savedRole = localStorage.getItem("preview_role") || fetchedUser.role;
+          setActiveRole(savedRole);
+        } else {
+          localStorage.removeItem("preview_role");
+          setActiveRole(fetchedUser.role);
+        }
       }, 0);
       syncAvatar();
     }
@@ -76,7 +81,7 @@ export default function DashboardLayout({
     return <div className="min-h-screen bg-slate-950 flex items-center justify-center text-white">Loading...</div>;
   }
 
-  const currentRole = activeRole || user.role;
+  const currentRole = user.role === "Administrator" ? (activeRole || user.role) : user.role;
 
   const isLinkActive = (href: string) => {
     if (href === "/dashboard") {
@@ -179,15 +184,36 @@ export default function DashboardLayout({
           { name: "Biomechanical Analytics", href: "/dashboard/analytics" },
           { name: "Progress", href: "/dashboard/progress" },
         ];
-      case "Administrator":
+      case "Doctor":
+      case "Physiotherapist":
         return [
           { name: "Home", href: "/dashboard" },
           { name: "Analyze Video", href: "/dashboard/upload" },
           { name: "Reports(Single Video)", href: "/dashboard/reports" },
           { name: "Video Comparison", href: "/dashboard/compare" },
           { name: "Reports(Dual Video)", href: "/dashboard/reports-dual" },
+          { name: "Recovery Status", href: "/dashboard/recovery" },
+          { name: "Player Monitoring", href: "/dashboard/monitoring" },
+          { name: "Recommendations", href: "/dashboard/recommendations" },
+          { name: "Training Plans", href: "/dashboard/training" },
+        ];
+      case "Administrator":
+        return [
+          { name: "Home", href: "/dashboard" },
           { name: "User Management", href: "/dashboard/users" },
-          { name: "System Settings", href: "/dashboard/settings" },
+          { name: "Analyze Video", href: "/dashboard/upload" },
+          { name: "Reports(Single Video)", href: "/dashboard/reports" },
+          { name: "Video Comparison", href: "/dashboard/compare" },
+          { name: "Reports(Dual Video)", href: "/dashboard/reports-dual" },
+          { name: "Player Monitoring", href: "/dashboard/monitoring" },
+          { name: "Workload Alerts", href: "/dashboard/workload" },
+          { name: "Recovery Status", href: "/dashboard/recovery" },
+          { name: "Biomechanical Analytics", href: "/dashboard/analytics" },
+          { name: "Recommendations", href: "/dashboard/recommendations" },
+          { name: "Profile", href: "/dashboard/profile" },
+          { name: "My Fitness", href: "/dashboard/fitness" },
+          { name: "Training Plans", href: "/dashboard/training" },
+          { name: "Progress", href: "/dashboard/progress" },
         ];
       default:
         return [
@@ -285,25 +311,33 @@ export default function DashboardLayout({
         <header className="h-16 flex items-center justify-between px-8 border-b border-slate-800 bg-slate-950/50 backdrop-blur-md sticky top-0 z-10">
           <div className="flex items-center gap-4">
             <h2 className="text-xl font-semibold capitalize text-white">{currentRole} Dashboard</h2>
-            <div className="flex items-center gap-2 bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-1 shadow-sm">
-              <span className="text-xs text-slate-400 font-medium">Role View:</span>
-              <select
-                value={currentRole}
-                onChange={(e) => {
-                  const newRole = e.target.value;
-                  setActiveRole(newRole);
-                  localStorage.setItem("preview_role", newRole);
-                  window.dispatchEvent(new CustomEvent("role_switched", { detail: { role: newRole } }));
-                }}
-                className="bg-transparent text-xs font-bold text-indigo-400 focus:outline-none cursor-pointer"
-              >
-                <option value="Athlete" className="bg-slate-900 text-slate-200">Athlete</option>
-                <option value="Coach" className="bg-slate-900 text-slate-200">Coach</option>
-                <option value="Physiotherapist" className="bg-slate-900 text-slate-200">Physiotherapist</option>
-                <option value="Sports Scientist" className="bg-slate-900 text-slate-200">Sports Scientist</option>
-                <option value="Administrator" className="bg-slate-900 text-slate-200">Administrator</option>
-              </select>
-            </div>
+            {user.role === "Administrator" ? (
+              <div className="flex items-center gap-2 bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-1 shadow-sm">
+                <span className="text-xs text-slate-400 font-medium">Role View:</span>
+                <select
+                  value={currentRole}
+                  onChange={(e) => {
+                    const newRole = e.target.value;
+                    setActiveRole(newRole);
+                    localStorage.setItem("preview_role", newRole);
+                    window.dispatchEvent(new CustomEvent("role_switched", { detail: { role: newRole } }));
+                  }}
+                  className="bg-transparent text-xs font-bold text-indigo-400 focus:outline-none cursor-pointer"
+                >
+                  <option value="Administrator" className="bg-slate-900 text-slate-200">Administrator (All Tabs)</option>
+                  <option value="Athlete" className="bg-slate-900 text-slate-200">Athlete</option>
+                  <option value="Coach" className="bg-slate-900 text-slate-200">Coach</option>
+                  <option value="Doctor" className="bg-slate-900 text-slate-200">Doctor</option>
+                  <option value="Physiotherapist" className="bg-slate-900 text-slate-200">Physiotherapist</option>
+                  <option value="Sports Scientist" className="bg-slate-900 text-slate-200">Sports Scientist</option>
+                </select>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 bg-slate-900/80 border border-slate-800 rounded-xl px-3 py-1 text-xs">
+                <span className="text-slate-500 font-medium">Role:</span>
+                <span className="text-indigo-400 font-bold">{user.role}</span>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-4">
             <button className="p-2 text-slate-400 hover:text-slate-200 transition-colors relative">

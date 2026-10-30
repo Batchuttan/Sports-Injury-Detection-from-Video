@@ -3,6 +3,7 @@
 import { useState, useRef } from "react";
 import Link from "next/link";
 import { uploadVideo, API_URL } from "@/lib/api";
+import { playAudioCue } from "@/lib/audioCue";
 import {
   ArrowUpCircle,
   ArrowDownCircle,
@@ -104,25 +105,18 @@ export default function VideoUploadPage() {
       const response = await uploadVideo(token, file, targetActivity, surfaceType, footwear, rpe, sleepQuality);
       setResult(response);
 
-      // Play audio cue if enabled in preferences
+      // Play user's configured audio cue upon completing pose estimation rendering
       try {
-        const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-        if (AudioCtx) {
-          const ctx = new AudioCtx();
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.type = "sine";
-          osc.frequency.setValueAtTime(587.33, ctx.currentTime);
-          osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12);
-          gain.gain.setValueAtTime(0.18, ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.start();
-          osc.stop(ctx.currentTime + 0.35);
+        const soundPref = localStorage.getItem("sound_effects");
+        const isSoundOn = soundPref === null ? true : soundPref === "true";
+        if (isSoundOn) {
+          const soundCue = localStorage.getItem("sound_cue") || "chime";
+          const soundVolume = Number(localStorage.getItem("sound_volume") || 80);
+          const customUrl = localStorage.getItem("custom_sound_url") || undefined;
+          playAudioCue(soundCue, soundVolume, customUrl);
         }
-      } catch {
-        // Audio playback gracefully suppressed if not supported
+      } catch (audioErr) {
+        console.warn("Video processing audio cue skipped:", audioErr);
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "An error occurred during video upload and processing.";

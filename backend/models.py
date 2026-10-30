@@ -13,6 +13,9 @@ class User(Base):
     email_alerts = Column(Integer, default=1)
     daily_wellness = Column(Integer, default=1)
     sound_effects = Column(Integer, default=0)
+    sound_cue = Column(String, default="chime")
+    custom_sound_url = Column(String, nullable=True)
+    sound_volume = Column(Integer, default=80)
     
     athlete_profile = relationship("AthleteProfile", back_populates="user", uselist=False)
 

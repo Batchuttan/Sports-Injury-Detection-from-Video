@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { compareVideos, compareExistingAnalyses, getAnalyses, API_URL } from "@/lib/api";
+import { playAudioCue } from "@/lib/audioCue";
 import {
   BarChart,
   Bar,
@@ -224,6 +225,20 @@ export default function ComparePage() {
 
       const res = await compareVideos(token, formData);
       setComparisonResult(res);
+
+      // Play user's configured audio cue upon completing dual video analysis rendering
+      try {
+        const soundPref = localStorage.getItem("sound_effects");
+        const isSoundOn = soundPref === null ? true : soundPref === "true";
+        if (isSoundOn) {
+          const soundCue = localStorage.getItem("sound_cue") || "chime";
+          const soundVolume = Number(localStorage.getItem("sound_volume") || 80);
+          const customUrl = localStorage.getItem("custom_sound_url") || undefined;
+          playAudioCue(soundCue, soundVolume, customUrl);
+        }
+      } catch (audioErr) {
+        console.warn("Dual video analysis audio cue skipped:", audioErr);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Error running video comparison.";
       setError(msg);
@@ -252,6 +267,20 @@ export default function ComparePage() {
 
       const res = await compareExistingAnalyses(token, selectedIdA, selectedIdB);
       setComparisonResult(res);
+
+      // Play user's configured audio cue upon completing dual video comparison rendering
+      try {
+        const soundPref = localStorage.getItem("sound_effects");
+        const isSoundOn = soundPref === null ? true : soundPref === "true";
+        if (isSoundOn) {
+          const soundCue = localStorage.getItem("sound_cue") || "chime";
+          const soundVolume = Number(localStorage.getItem("sound_volume") || 80);
+          const customUrl = localStorage.getItem("custom_sound_url") || undefined;
+          playAudioCue(soundCue, soundVolume, customUrl);
+        }
+      } catch (audioErr) {
+        console.warn("Dual video comparison audio cue skipped:", audioErr);
+      }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Comparison failed.";
       setError(msg);

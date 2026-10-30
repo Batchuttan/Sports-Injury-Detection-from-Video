@@ -12,9 +12,15 @@ class UserCreate(UserBase):
 class UserResponse(UserBase):
     id: int
     profile_picture: Optional[str] = None
+    sound_cue: Optional[str] = None
+    custom_sound_url: Optional[str] = None
+    sound_volume: Optional[int] = None
     email_alerts: Optional[int] = 1
     daily_wellness: Optional[int] = 1
     sound_effects: Optional[int] = 0
+    sound_cue: Optional[str] = "chime"
+    custom_sound_url: Optional[str] = None
+    sound_volume: Optional[int] = 80
     class Config:
         from_attributes = True
 
@@ -23,6 +29,9 @@ class UserSettingsUpdate(BaseModel):
     daily_wellness: Optional[bool] = None
     sound_effects: Optional[bool] = None
     profile_picture: Optional[str] = None
+    sound_cue: Optional[str] = None
+    custom_sound_url: Optional[str] = None
+    sound_volume: Optional[int] = None
 
 # Athlete Schemas
 class AthleteProfileBase(BaseModel):
@@ -38,6 +47,9 @@ class AthleteProfileBase(BaseModel):
     emergency_contact: Optional[str] = None
     personal_bio: Optional[str] = None
     profile_picture: Optional[str] = None
+    sound_cue: Optional[str] = None
+    custom_sound_url: Optional[str] = None
+    sound_volume: Optional[int] = None
 
 class AthleteProfileCreate(AthleteProfileBase):
     pass
@@ -88,6 +100,7 @@ class Token(BaseModel):
 class GoogleLogin(BaseModel):
     email: str
     role: Optional[str] = "Athlete"
+    action: Optional[str] = "login"
 
 class VideoAnalysisResponse(BaseModel):
     id: int

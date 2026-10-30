@@ -3,17 +3,120 @@
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { login, register, googleLogin, forgotPassword } from "@/lib/api";
+import { login, register, googleLogin, forgotPassword, getDeviceAccounts } from "@/lib/api";
 import { useGoogleLogin } from "@react-oauth/google";
+
+const KNOWN_PASSWORDS: Record<string, string> = {
+  "superadmin@gmail.com": "superadmin",
+  "athlete@gmail.com": "athlete123",
+  "coach@gmail.com": "coach123",
+  "doctor@gmail.com": "doctor123",
+  "physiotherapist@gmail.com": "physiotherapist@123",
+  "sportsscientist@gmail.com": "sportsscientist123",
+  "demo@sportsai.com": "password123",
+  "athlete@sportsai.com": "password123",
+  "aizalbegenemeliteachu@gmail.com": "password123",
+  "yourtubeentertainments@gmail.com": "password123",
+};
+
+const PRESET_ACCOUNTS = [
+  {
+    email: "superadmin@gmail.com",
+    password: "superadmin",
+    role: "Administrator",
+    label: "Super Admin",
+    badgeColor: "bg-purple-500/20 text-purple-300 border-purple-500/40",
+    dotColor: "bg-purple-400",
+  },
+  {
+    email: "athlete@gmail.com",
+    password: "athlete123",
+    role: "Athlete",
+    label: "Athlete",
+    badgeColor: "bg-emerald-500/20 text-emerald-300 border-emerald-500/40",
+    dotColor: "bg-emerald-400",
+  },
+  {
+    email: "coach@gmail.com",
+    password: "coach123",
+    role: "Coach",
+    label: "Coach",
+    badgeColor: "bg-blue-500/20 text-blue-300 border-blue-500/40",
+    dotColor: "bg-blue-400",
+  },
+  {
+    email: "doctor@gmail.com",
+    password: "doctor123",
+    role: "Doctor",
+    label: "Doctor",
+    badgeColor: "bg-rose-500/20 text-rose-300 border-rose-500/40",
+    dotColor: "bg-rose-400",
+  },
+  {
+    email: "physiotherapist@gmail.com",
+    password: "physiotherapist@123",
+    role: "Physiotherapist",
+    label: "Physiotherapist",
+    badgeColor: "bg-cyan-500/20 text-cyan-300 border-cyan-500/40",
+    dotColor: "bg-cyan-400",
+  },
+  {
+    email: "sportsscientist@gmail.com",
+    password: "sportsscientist123",
+    role: "Sports Scientist",
+    label: "Sports Scientist",
+    badgeColor: "bg-amber-500/20 text-amber-300 border-amber-500/40",
+    dotColor: "bg-amber-400",
+  },
+];
+
+const INITIAL_DEVICE_ACCOUNTS = [
+  {
+    email: "aizalbegenemeliteachu@gmail.com",
+    password: "password123",
+    role: "Athlete",
+    label: "Google Account (Athlete)",
+    isLocal: true,
+  },
+  {
+    email: "yourtubeentertainments@gmail.com",
+    password: "password123",
+    role: "Athlete",
+    label: "Google Account (Athlete)",
+    isLocal: true,
+  },
+  {
+    email: "demo@sportsai.com",
+    password: "password123",
+    role: "Athlete",
+    label: "Demo Athlete Profile",
+    isLocal: true,
+  },
+  {
+    email: "athlete@sportsai.com",
+    password: "password123",
+    role: "Athlete",
+    label: "SportsAI Athlete",
+    isLocal: true,
+  },
+];
 
 export default function Home() {
   const [isLogin, setIsLogin] = useState(true);
-  const [email, setEmail] = useState("demo@sportsai.com");
-  const [password, setPassword] = useState("password123");
-  const [role, setRole] = useState("Athlete");
+  const [email, setEmail] = useState("superadmin@gmail.com");
+  const [password, setPassword] = useState("superadmin");
+  const [role, setRole] = useState("Administrator");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showAccountsDropdown, setShowAccountsDropdown] = useState(false);
+  const [deviceAccounts, setDeviceAccounts] = useState<Array<{ email: string; password?: string; role: string; label?: string; isLocal?: boolean }>>(INITIAL_DEVICE_ACCOUNTS);
+
+  // Unregistered Google account detection state
+  const [unregisteredAccount, setUnregisteredAccount] = useState<{
+    email: string;
+    message: string;
+  } | null>(null);
 
   // Forgot password modal state
   const [showForgotModal, setShowForgotModal] = useState(false);
@@ -24,38 +127,155 @@ export default function Home() {
 
   const router = useRouter();
 
+  const rememberAccountOnDevice = (userEmail: string, userPass?: string, userRole?: string) => {
+    if (!userEmail) return;
+    try {
+      const stored = localStorage.getItem("sportsai_device_accounts");
+      let list: any[] = stored ? JSON.parse(stored) : [];
+      list = list.filter((a) => a.email.toLowerCase() !== userEmail.toLowerCase());
+      list.unshift({
+        email: userEmail,
+        password: userPass || "",
+        role: userRole || "Athlete",
+        savedAt: Date.now(),
+      });
+      localStorage.setItem("sportsai_device_accounts", JSON.stringify(list.slice(0, 30)));
+    } catch { }
+  };
+
   useEffect(() => {
+    // Check URL parameters for register mode or prefill email
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("mode") === "register") {
+        setIsLogin(false);
+      }
+      const prefillEmail = params.get("email");
+      if (prefillEmail) {
+        setEmail(prefillEmail);
+      }
+    }
+
+    // Load device accounts from localStorage & backend database
+    const loadDeviceAccounts = async () => {
+      let localList: any[] = [];
+      try {
+        const stored = localStorage.getItem("sportsai_device_accounts");
+        if (stored) localList = JSON.parse(stored);
+      } catch { }
+
+      const backendAccounts = await getDeviceAccounts();
+      const accountMap = new Map<string, { email: string; password?: string; role: string; label?: string; isLocal?: boolean }>();
+
+      // 1. Seed with known device accounts
+      INITIAL_DEVICE_ACCOUNTS.forEach((acc) => {
+        accountMap.set(acc.email.toLowerCase(), { ...acc });
+      });
+
+      // 2. Add backend accounts, keeping role templates in their own section
+      backendAccounts.forEach((acc) => {
+        const em = acc.email.toLowerCase();
+        if (em.startsWith("newuser") || em.startsWith("nonexistent")) return;
+        const isPreset = PRESET_ACCOUNTS.some((p) => p.email.toLowerCase() === em);
+        if (!isPreset && !accountMap.has(em)) {
+          accountMap.set(em, {
+            email: acc.email,
+            password: KNOWN_PASSWORDS[em] || "password123",
+            role: acc.role || "Athlete",
+            label: "Device Account",
+            isLocal: false,
+          });
+        }
+      });
+
+      // 3. Merge with accounts remembered in localStorage
+      localList.forEach((acc) => {
+        const em = acc.email.toLowerCase();
+        const existing = accountMap.get(em);
+        accountMap.set(em, {
+          email: acc.email,
+          password: acc.password || existing?.password || KNOWN_PASSWORDS[em] || "password123",
+          role: acc.role || existing?.role || "Athlete",
+          label: existing?.label || "Saved on Device",
+          isLocal: true,
+        });
+      });
+
+      setDeviceAccounts(Array.from(accountMap.values()));
+    };
+
+    loadDeviceAccounts();
+
     // Prefetch dashboard route in background for instantaneous sign-in transition
     router.prefetch("/dashboard");
   }, [router]);
+
+  const handleGoToRegister = (targetEmail?: string) => {
+    setIsLogin(false);
+    if (targetEmail) {
+      setEmail(targetEmail);
+    }
+    setPassword("");
+    setError("");
+    setUnregisteredAccount(null);
+    const targetUrl = targetEmail ? `/?mode=register&email=${encodeURIComponent(targetEmail)}` : "/?mode=register";
+    router.push(targetUrl);
+  };
 
   const googleLoginHook = useGoogleLogin({
     onSuccess: async (tokenResponse) => {
       setLoading(true);
       setError("");
+      setUnregisteredAccount(null);
       try {
-        // We get an access token from Google, but usually we need user info.
-        // For simplicity, we can fetch user info from Google API here
+        // Fetch user profile info from Google API using the OAuth access token
         const res = await fetch("https://www.googleapis.com/oauth2/v3/userinfo", {
           headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
         });
+
+        if (!res.ok) {
+          throw new Error("Unable to retrieve profile from Google");
+        }
+
         const userInfo = await res.json();
 
         if (!userInfo.email) {
-          throw new Error("Could not get email from Google");
+          throw new Error("Could not retrieve email from Google account");
         }
 
-        const data = await googleLogin(userInfo.email, role);
-        localStorage.setItem("token", data.access_token);
-        router.push("/dashboard");
-      } catch (err) {
-        console.error(err);
-        setError("Google Login failed");
+        const action = isLogin ? "login" : "register";
+        const result = await googleLogin(userInfo.email, role, action);
+
+        if (!result.success) {
+          if (result.notRegistered) {
+            setUnregisteredAccount({
+              email: result.email || userInfo.email,
+              message: result.message || "This Google account has not yet registered. Please register your account.",
+            });
+          } else {
+            setError(result.message || "Google Login failed");
+          }
+          return;
+        }
+
+        if (result.access_token) {
+          localStorage.setItem("token", result.access_token);
+          router.push("/dashboard");
+        }
+      } catch (err: any) {
+        console.warn("Google Auth notice:", err);
+        const errMsg = err?.message || "";
+        if (errMsg.toLowerCase().includes("failed to fetch")) {
+          setError("Cannot connect to server. Please verify the backend is running on port 8000.");
+        } else {
+          setError(errMsg || "Google Login failed");
+        }
       } finally {
         setLoading(false);
       }
     },
-    onError: () => {
+    onError: (err) => {
+      console.error("Google OAuth error:", err);
       setError("Google Login was cancelled or failed");
     }
   });
@@ -64,8 +284,8 @@ export default function Home() {
     googleLoginHook();
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.SyntheticEvent) => {
+    if (e?.preventDefault) e.preventDefault();
     setLoading(true);
     setError("");
 
@@ -73,11 +293,13 @@ export default function Home() {
       if (isLogin) {
         const data = await login(email, password);
         localStorage.setItem("token", data.access_token);
+        rememberAccountOnDevice(email, password, role);
         router.push("/dashboard");
       } else {
         await register(email, password, role);
         const data = await login(email, password);
         localStorage.setItem("token", data.access_token);
+        rememberAccountOnDevice(email, password, role);
         router.push("/dashboard");
       }
     } catch (err) {
@@ -166,25 +388,242 @@ export default function Home() {
                 <p className="text-slate-400 text-sm">{isLogin ? "Sign in to your intelligent sports hub" : "Join the sports injury prevention platform"}</p>
               </div>
 
-              <form className="space-y-4" onSubmit={handleSubmit}>
+              <div
+                className="space-y-4"
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    handleSubmit(e);
+                  }
+                }}
+              >
+                {unregisteredAccount && (
+                  <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-200 text-sm space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <div className="flex items-start gap-3">
+                      <div className="p-2 rounded-lg bg-amber-500/20 text-amber-400 mt-0.5 shrink-0">
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                        </svg>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-amber-300 text-sm">Account Not Registered</p>
+                        <p className="text-xs text-amber-200/90 mt-1 leading-relaxed break-words">
+                          No profile found for <span className="font-mono text-white font-medium underline">{unregisteredAccount.email}</span>. Please register this account to continue.
+                        </p>
+                      </div>
+                    </div>
+                    <div className="pt-2 border-t border-amber-500/20">
+                      <button
+                        type="button"
+                        onClick={() => handleGoToRegister(unregisteredAccount.email)}
+                        className="w-full py-2.5 px-3 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold rounded-lg transition-colors text-xs tracking-wider uppercase flex items-center justify-center gap-1.5 shadow-md shadow-amber-500/10 cursor-pointer"
+                      >
+                        <span>REGISTER</span>
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {error && <div className="text-rose-500 text-sm font-medium">{error}</div>}
-                <div className="space-y-1">
-                  <label className="text-sm font-medium text-slate-300">Email Address</label>
-                  <input
-                    type="email"
-                    placeholder="coach@team.com"
-                    className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors text-slate-100 placeholder:text-slate-600"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
+
+                {!isLogin && email && (
+                  <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-200 text-xs flex items-center justify-between">
+                    <span>Account: <strong className="text-white font-mono">{email}</strong></span>
+                    <button
+                      type="button"
+                      onClick={() => setEmail("")}
+                      className="text-[11px] text-indigo-400 hover:text-indigo-300 underline ml-2"
+                    >
+                      Clear
+                    </button>
+                  </div>
+                )}
+                <div className="space-y-1 relative">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-medium text-slate-300">Email Address</label>
+                    {isLogin && (
+                      <button
+                        type="button"
+                        onClick={() => setShowAccountsDropdown(!showAccountsDropdown)}
+                        className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1.5 font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 px-2.5 py-1 rounded-lg border border-indigo-500/30 transition-all cursor-pointer shadow-sm"
+                      >
+                        <svg className="w-3.5 h-3.5 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                        </svg>
+                        <span>Saved &amp; Role Accounts</span>
+                        <svg className={`w-3.5 h-3.5 transition-transform duration-200 ${showAccountsDropdown ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                    )}
+                  </div>
+                  <div className="relative">
+                    <div className="relative">
+                      <input
+                        type="email"
+                        id="login_user_key"
+                        name="login_user_key"
+                        autoComplete="off"
+                        placeholder="superadmin@gmail.com"
+                        className="w-full px-4 py-3 pr-10 bg-slate-900/50 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors text-slate-100 placeholder:text-slate-600"
+                        value={email}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setEmail(val);
+                          const matchedPreset = PRESET_ACCOUNTS.find(a => a.email.toLowerCase() === val.trim().toLowerCase());
+                          const matchedDevice = deviceAccounts.find(a => a.email.toLowerCase() === val.trim().toLowerCase());
+                          if (matchedPreset) {
+                            setPassword(matchedPreset.password);
+                            setRole(matchedPreset.role);
+                          } else if (matchedDevice) {
+                            setPassword(matchedDevice.password || KNOWN_PASSWORDS[matchedDevice.email.toLowerCase()] || "password123");
+                            setRole(matchedDevice.role || "Athlete");
+                          }
+                        }}
+                        onClick={() => {
+                          if (isLogin) setShowAccountsDropdown(true);
+                        }}
+                        onFocus={() => {
+                          if (isLogin) setShowAccountsDropdown(true);
+                        }}
+                      />
+                      {isLogin && (
+                        <button
+                          type="button"
+                          onClick={() => setShowAccountsDropdown(!showAccountsDropdown)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-indigo-400 transition-colors cursor-pointer"
+                          title="View Saved & Role Accounts"
+                        >
+                          <svg className={`w-4 h-4 transition-transform duration-200 ${showAccountsDropdown ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M19 9l-7 7-7-7" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Interactive dropdown panel */}
+                    {isLogin && showAccountsDropdown && (
+                      <div className="absolute z-30 left-0 right-0 mt-1.5 p-2.5 bg-slate-900/95 border border-slate-700 rounded-xl shadow-2xl backdrop-blur-xl space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
+                        <div className="flex items-center justify-between px-2 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                          <span className="flex items-center gap-1.5">
+                            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                            <span>Select Saved or Role Account</span>
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowAccountsDropdown(false);
+                            }}
+                            className="text-slate-400 hover:text-white text-xs px-1.5 py-0.5 rounded hover:bg-slate-800"
+                          >
+                            ✕
+                          </button>
+                        </div>
+
+                        <div className="max-h-72 overflow-y-auto space-y-3 pt-1">
+                          {/* 1. Device Accounts (Present and previously signed in on this device) */}
+                          {deviceAccounts.length > 0 && (
+                            <div className="space-y-1">
+                              <div className="px-2 text-[10px] font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1">
+                                <span>📱 Present on this Device ({deviceAccounts.length})</span>
+                              </div>
+                              {deviceAccounts.map((acc) => {
+                                const isSelected = email.toLowerCase() === acc.email.toLowerCase();
+                                const pass = acc.password || KNOWN_PASSWORDS[acc.email.toLowerCase()] || "password123";
+                                return (
+                                  <button
+                                    key={`dev-btn-${acc.email}`}
+                                    type="button"
+                                    onClick={() => {
+                                      setEmail(acc.email);
+                                      setPassword(pass);
+                                      setRole(acc.role || "Athlete");
+                                      setShowAccountsDropdown(false);
+                                    }}
+                                    className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between text-xs transition-colors cursor-pointer ${isSelected
+                                        ? "bg-cyan-600/30 border border-cyan-500/50 text-white"
+                                        : "hover:bg-slate-800/80 text-slate-300"
+                                      }`}
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <span className="w-2 h-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.5)] shrink-0" />
+                                      <div className="min-w-0 truncate">
+                                        <p className="font-semibold text-slate-200 truncate text-xs">{acc.email}</p>
+                                        <p className="text-[11px] text-slate-400">
+                                          {acc.label || "Saved Device Account"}
+                                        </p>
+                                      </div>
+                                    </div>
+                                    <span className="px-2 py-0.5 rounded text-[10px] font-bold border bg-cyan-500/15 text-cyan-300 border-cyan-500/30 shrink-0 ml-2">
+                                      {acc.role || "User"}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+
+                          {/* 2. System Role Presets */}
+                          <div className="space-y-1">
+                            <div className="px-2 text-[10px] font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1">
+                              <span>👑 Role Templates</span>
+                            </div>
+                            {PRESET_ACCOUNTS.map((acc) => {
+                              const isSelected = email.toLowerCase() === acc.email.toLowerCase();
+                              return (
+                                <button
+                                  key={`preset-btn-${acc.email}`}
+                                  type="button"
+                                  onClick={() => {
+                                    setEmail(acc.email);
+                                    setPassword(acc.password);
+                                    setRole(acc.role);
+                                    setShowAccountsDropdown(false);
+                                  }}
+                                  className={`w-full text-left px-3 py-2 rounded-lg flex items-center justify-between text-xs transition-colors cursor-pointer ${isSelected
+                                      ? "bg-indigo-600/30 border border-indigo-500/50 text-white"
+                                      : "hover:bg-slate-800/80 text-slate-300"
+                                    }`}
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span className={`w-2 h-2 rounded-full ${acc.dotColor} shrink-0`} />
+                                    <div className="min-w-0 truncate">
+                                      <p className="font-semibold text-slate-200 truncate text-xs">{acc.email}</p>
+                                      <p className="text-[11px] text-slate-400">{acc.label} Profile</p>
+                                    </div>
+                                  </div>
+                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold border ${acc.badgeColor} shrink-0 ml-2`}>
+                                    {acc.label}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-sm font-medium text-slate-300">Password</label>
                   <div className="relative">
                     <input
-                      type={showPassword ? "text" : "password"}
+                      type="text"
+                      id="app_auth_token"
+                      name="app_auth_token"
                       placeholder="••••••••"
+                      autoComplete="off"
+                      data-lpignore="true"
+                      data-1p-ignore="true"
+                      data-form-type="other"
+                      style={{
+                        WebkitTextSecurity: showPassword ? "none" : "disc",
+                      } as React.CSSProperties}
                       className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors text-slate-100 placeholder:text-slate-600"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
@@ -192,7 +631,7 @@ export default function Home() {
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300 text-sm font-medium"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-300 text-sm font-medium cursor-pointer"
                     >
                       {showPassword ? "Hide" : "Show"}
                     </button>
@@ -203,12 +642,13 @@ export default function Home() {
                   <div className="space-y-1">
                     <label className="text-sm font-medium text-slate-300">Role</label>
                     <select
-                      className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors text-slate-100 appearance-none"
+                      className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors text-slate-100 appearance-none cursor-pointer"
                       value={role}
                       onChange={(e) => setRole(e.target.value)}
                     >
                       <option value="Athlete">Athlete</option>
                       <option value="Coach">Coach</option>
+                      <option value="Doctor">Doctor</option>
                       <option value="Physiotherapist">Physiotherapist</option>
                       <option value="Sports Scientist">Sports Scientist</option>
                       <option value="Administrator">Administrator</option>
@@ -230,7 +670,7 @@ export default function Home() {
                         setForgotSuccess("");
                         setShowForgotModal(true);
                       }}
-                      className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors font-medium"
+                      className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors font-medium cursor-pointer"
                     >
                       Forgot password?
                     </button>
@@ -238,9 +678,10 @@ export default function Home() {
                 )}
 
                 <button
-                  type="submit"
+                  type="button"
+                  onClick={(e) => handleSubmit(e)}
                   disabled={loading}
-                  className="block w-full py-3 px-4 bg-white text-slate-900 text-center font-bold rounded-xl hover:bg-slate-200 transition-colors mt-6 disabled:opacity-50"
+                  className="block w-full py-3 px-4 bg-white text-slate-900 text-center font-bold rounded-xl hover:bg-slate-200 transition-colors mt-6 disabled:opacity-50 cursor-pointer shadow-lg active:scale-[0.99]"
                 >
                   {loading ? (isLogin ? "Signing In..." : "Creating Account...") : (isLogin ? "Sign In ->" : "Sign Up ->")}
                 </button>
@@ -254,7 +695,7 @@ export default function Home() {
                 <button
                   type="button"
                   onClick={handleGoogleAuth}
-                  className="w-full py-3 px-4 bg-slate-800 border border-slate-700 text-white font-semibold rounded-xl hover:bg-slate-700 transition-colors flex items-center justify-center gap-3 mt-4"
+                  className="w-full py-3 px-4 bg-slate-800 border border-slate-700 text-white font-semibold rounded-xl hover:bg-slate-700 transition-colors flex items-center justify-center gap-3 mt-4 cursor-pointer"
                 >
                   <svg className="w-5 h-5" viewBox="0 0 24 24">
                     <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -264,11 +705,15 @@ export default function Home() {
                   </svg>
                   {isLogin ? "Sign In with Google" : "Register with Google"}
                 </button>
-              </form>
+              </div>
 
               <div className="text-center mt-4">
                 <button
-                  onClick={() => setIsLogin(!isLogin)}
+                  onClick={() => {
+                    setUnregisteredAccount(null);
+                    setError("");
+                    setIsLogin(!isLogin);
+                  }}
                   className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
                 >
                   {isLogin ? "Need an account? Register" : "Already have an account? Sign in"}

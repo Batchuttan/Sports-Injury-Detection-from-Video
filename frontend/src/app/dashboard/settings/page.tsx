@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { getUserFromToken } from "@/lib/auth";
-import { requestPasswordChange, getUserSettings, updateUserSettings, uploadUserAvatar } from "@/lib/api";
+import { requestPasswordChange, getUserSettings, updateUserSettings, uploadUserAvatar, uploadUserSound } from "@/lib/api";
+import { playAudioCue, PREDEFINED_SOUNDS } from "@/lib/audioCue";
 
 export default function SettingsPage() {
   const [user, setUser] = useState<{ email: string; role: string } | null>(null);
@@ -14,6 +15,11 @@ export default function SettingsPage() {
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [dailyWellness, setDailyWellness] = useState(true);
   const [soundEffects, setSoundEffects] = useState(false);
+  const [soundCue, setSoundCue] = useState<string>("chime");
+  const [customSoundUrl, setCustomSoundUrl] = useState<string>("");
+  const [soundVolume, setSoundVolume] = useState<number>(80);
+  const [uploadingSound, setUploadingSound] = useState(false);
+  const soundFileInputRef = useRef<HTMLInputElement>(null);
   const [savingSettings, setSavingSettings] = useState(false);
   const [saveSuccessMsg, setSaveSuccessMsg] = useState("");
 
@@ -24,27 +30,70 @@ export default function SettingsPage() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Play subtle chime using Web Audio API
-  const playSubtleChime = () => {
+  // Preview sound cue
+  const previewSound = (cueId?: string) => {
+    const idToPlay = cueId || soundCue;
+    playAudioCue(idToPlay, soundVolume, customSoundUrl);
+  };
+
+  const handleSelectSound = async (cueId: string) => {
+    setSoundCue(cueId);
+    setSoundEffects(true);
+    localStorage.setItem("sound_cue", cueId);
+    localStorage.setItem("sound_effects", "true");
+    playAudioCue(cueId, soundVolume, customSoundUrl);
+
     try {
-      const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      const ctx = new AudioCtx();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.12); // A5
-
-      gain.gain.setValueAtTime(0.18, ctx.currentTime);
-      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
-
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start();
-      osc.stop(ctx.currentTime + 0.35);
+      const token = localStorage.getItem("token");
+      if (token) {
+        await updateUserSettings(token, { sound_cue: cueId, sound_effects: true });
+        setSaveSuccessMsg(`Sound cue set to "${cueId}"`);
+        setTimeout(() => setSaveSuccessMsg(""), 2500);
+      }
     } catch (e) {
-      console.warn("Audio cue playback error:", e);
+      console.error(e);
+    }
+  };
+
+  const handleVolumeChange = async (newVol: number) => {
+    setSoundVolume(newVol);
+    localStorage.setItem("sound_volume", String(newVol));
+    try {
+      const token = localStorage.getItem("token");
+      if (token) {
+        await updateUserSettings(token, { sound_volume: newVol });
+      }
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  const handleSoundFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingSound(true);
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) throw new Error("No authorization token found");
+
+      const res = await uploadUserSound(token, file);
+      if (res && res.custom_sound_url) {
+        setCustomSoundUrl(res.custom_sound_url);
+        setSoundCue("custom");
+        setSoundEffects(true);
+        localStorage.setItem("custom_sound_url", res.custom_sound_url);
+        localStorage.setItem("sound_cue", "custom");
+        localStorage.setItem("sound_effects", "true");
+
+        playAudioCue("custom", soundVolume, res.custom_sound_url);
+        setSaveSuccessMsg("Custom audio cue uploaded & activated!");
+        setTimeout(() => setSaveSuccessMsg(""), 3500);
+      }
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to upload audio file");
+    } finally {
+      setUploadingSound(false);
     }
   };
 
@@ -63,6 +112,14 @@ export default function SettingsPage() {
           setEmailAlerts(Boolean(data.email_alerts));
           setDailyWellness(Boolean(data.daily_wellness));
           setSoundEffects(Boolean(data.sound_effects));
+          if (data.sound_cue) setSoundCue(data.sound_cue);
+          if (data.custom_sound_url) setCustomSoundUrl(data.custom_sound_url);
+          if (data.sound_volume !== undefined && data.sound_volume !== null) setSoundVolume(data.sound_volume);
+          // Sync to localStorage for fast access by upload page
+          localStorage.setItem("sound_effects", String(Boolean(data.sound_effects)));
+          localStorage.setItem("sound_cue", data.sound_cue || "chime");
+          localStorage.setItem("custom_sound_url", data.custom_sound_url || "");
+          localStorage.setItem("sound_volume", String(data.sound_volume !== undefined ? data.sound_volume : 80));
           if (data.profile_picture) {
             setProfilePicture(data.profile_picture);
             localStorage.setItem("user_avatar", data.profile_picture);
@@ -81,8 +138,9 @@ export default function SettingsPage() {
     if (key === "daily_wellness") setDailyWellness(nextVal);
     if (key === "sound_effects") {
       setSoundEffects(nextVal);
+      localStorage.setItem("sound_effects", String(nextVal));
       if (nextVal) {
-        playSubtleChime();
+        previewSound();
       }
     }
 
@@ -389,35 +447,204 @@ export default function SettingsPage() {
           </div>
 
           {/* Video Processing Audio Cues */}
-          <div className="flex items-center justify-between p-4 rounded-xl bg-slate-900/40 border border-slate-800/60 hover:border-slate-700/60 transition-colors">
-            <div className="pr-4">
-              <div className="text-white font-medium text-sm flex items-center gap-2">
-                <span>Video Processing Audio Cues</span>
-                {soundEffects ? (
-                  <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-indigo-500/15 text-indigo-400 border border-indigo-500/30">Sound On</span>
-                ) : (
-                  <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-500">Silent</span>
-                )}
+          <div className="p-5 rounded-2xl bg-slate-900/40 border border-slate-800/80 hover:border-slate-700/80 transition-all space-y-5">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-white font-semibold text-base flex items-center gap-2">
+                  <span>Video Processing Audio Cues</span>
+                  {soundEffects ? (
+                    <span className="text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      Sound On
+                    </span>
+                  ) : (
+                    <span className="text-[10px] uppercase font-bold px-2.5 py-0.5 rounded-full bg-slate-800 text-slate-500 border border-slate-700">
+                      Silent
+                    </span>
+                  )}
+                </div>
+                <div className="text-xs text-slate-400 mt-1">
+                  Play audio notification upon completing pose estimation rendering
+                </div>
               </div>
-              <div className="text-xs text-slate-400 mt-1">Play subtle audio notification upon completing pose estimation rendering</div>
-              <button
-                type="button"
-                onClick={playSubtleChime}
-                className="mt-2 text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium cursor-pointer"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
-                </svg>
-                Preview Chime Tone
-              </button>
+
+              <div className="flex items-center gap-3">
+                {soundEffects && (
+                  <button
+                    type="button"
+                    onClick={() => previewSound()}
+                    className="px-3 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 border border-indigo-500/40 text-indigo-300 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                    </svg>
+                    Preview Chime Tone
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => handleToggle("sound_effects", !soundEffects)}
+                  className={`w-14 h-7 rounded-full transition-colors relative cursor-pointer shrink-0 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 ${soundEffects ? "bg-indigo-600" : "bg-slate-700"}`}
+                >
+                  <div className={`w-5 h-5 bg-white rounded-full absolute top-1 transition-all ${soundEffects ? "right-1" : "left-1"}`} />
+                </button>
+              </div>
             </div>
-            <button
-              type="button"
-              onClick={() => handleToggle("sound_effects", !soundEffects)}
-              className={`w-14 h-7 rounded-full transition-colors relative cursor-pointer shrink-0 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 ${soundEffects ? "bg-indigo-600" : "bg-slate-700"}`}
-            >
-              <div className={`w-5 h-5 bg-white rounded-full absolute top-1 transition-all ${soundEffects ? "right-1" : "left-1"}`} />
-            </button>
+
+            {/* Sound Selector Grid (Visible ONLY when toggled ON) */}
+            {soundEffects && (
+              <div className="pt-3 border-t border-slate-800/80 space-y-3.5 animate-in fade-in slide-in-from-top-2 duration-200">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <span>Predefined &amp; Saved Sounds</span>
+                  <span className="text-[10px] text-slate-500 normal-case font-normal">(Click card to select &amp; auto-save)</span>
+                </label>
+                <div className="text-xs text-indigo-400 font-medium">
+                  Active Tone: <strong className="text-white capitalize">{soundCue}</strong>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2.5">
+                {PREDEFINED_SOUNDS.map((tone) => {
+                  const isSelected = soundCue === tone.id;
+                  return (
+                    <div
+                      key={tone.id}
+                      onClick={() => handleSelectSound(tone.id)}
+                      className={`p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
+                        isSelected
+                          ? "bg-indigo-600/20 border-indigo-500 text-white shadow-[0_0_15px_rgba(79,70,229,0.2)]"
+                          : "bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-900"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-lg">{tone.icon}</span>
+                          <div>
+                            <div className="text-xs font-bold leading-tight">{tone.name}</div>
+                            <div className="text-[11px] text-slate-400 mt-0.5 leading-snug">{tone.description}</div>
+                          </div>
+                        </div>
+                        {isSelected && (
+                          <span className="w-2 h-2 rounded-full bg-indigo-400 shrink-0 mt-1 shadow-[0_0_6px_rgba(129,140,248,0.8)]" />
+                        )}
+                      </div>
+
+                      <div className="mt-3 pt-2 border-t border-slate-800/50 flex items-center justify-between">
+                        <span className="text-[10px] font-mono text-slate-500 uppercase">{tone.id}</span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            playAudioCue(tone.id, soundVolume);
+                          }}
+                          className="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600/30 text-[11px] font-medium text-slate-300 hover:text-white transition-colors flex items-center gap-1"
+                        >
+                          ▶ Play
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Custom Audio Option Card */}
+                <div
+                  onClick={() => {
+                    if (customSoundUrl) {
+                      handleSelectSound("custom");
+                    } else {
+                      soundFileInputRef.current?.click();
+                    }
+                  }}
+                  className={`p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
+                    soundCue === "custom"
+                      ? "bg-purple-600/20 border-purple-500 text-white shadow-[0_0_15px_rgba(168,85,247,0.2)]"
+                      : "bg-slate-900/60 border-slate-800 text-slate-300 hover:border-slate-700 hover:bg-slate-900"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="text-lg">🎵</span>
+                      <div>
+                        <div className="text-xs font-bold leading-tight flex items-center gap-1.5">
+                          <span>Custom Audio</span>
+                          <span className="text-[9px] uppercase px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 font-mono">Custom</span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                          {customSoundUrl ? "Custom audio file active" : "Upload your MP3, WAV or OGG"}
+                        </div>
+                      </div>
+                    </div>
+                    {soundCue === "custom" && (
+                      <span className="w-2 h-2 rounded-full bg-purple-400 shrink-0 mt-1 shadow-[0_0_6px_rgba(192,132,252,0.8)]" />
+                    )}
+                  </div>
+
+                  <div className="mt-3 pt-2 border-t border-slate-800/50 flex items-center justify-between gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        soundFileInputRef.current?.click();
+                      }}
+                      disabled={uploadingSound}
+                      className="px-2.5 py-1 rounded bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/40 text-[11px] font-semibold text-purple-200 transition-colors cursor-pointer"
+                    >
+                      {uploadingSound ? "Uploading..." : customSoundUrl ? "Replace Sound" : "Upload Sound"}
+                    </button>
+
+                    {customSoundUrl && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          playAudioCue("custom", soundVolume, customSoundUrl);
+                        }}
+                        className="px-2 py-1 rounded bg-slate-800 hover:bg-purple-600/30 text-[11px] font-medium text-slate-300 hover:text-white transition-colors flex items-center gap-1"
+                      >
+                        ▶ Play
+                      </button>
+                    )}
+                  </div>
+
+                  <input
+                    ref={soundFileInputRef}
+                    type="file"
+                    accept="audio/mp3,audio/wav,audio/ogg,audio/aac,audio/m4a,.mp3,.wav,.ogg,.m4a"
+                    className="hidden"
+                    onChange={handleSoundFileUpload}
+                  />
+                </div>
+              </div>
+
+              {/* Volume Slider */}
+              <div className="pt-3 border-t border-slate-800/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-slate-400 text-xs flex items-center gap-1.5 font-medium">
+                    <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+                    </svg>
+                    <span>Notification Volume:</span>
+                  </span>
+                  <input
+                    type="range"
+                    min="10"
+                    max="100"
+                    step="5"
+                    value={soundVolume}
+                    onChange={(e) => handleVolumeChange(Number(e.target.value))}
+                    className="w-36 h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
+                  />
+                  <span className="text-xs font-mono text-indigo-400 font-bold">{soundVolume}%</span>
+                </div>
+
+                <div className="text-[11px] text-slate-500">
+                  Settings are automatically persisted to backend database.
+                </div>
+              </div>
+            </div>
+          )}
           </div>
         </div>
       </div>

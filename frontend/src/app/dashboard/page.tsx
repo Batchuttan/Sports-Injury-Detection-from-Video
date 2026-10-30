@@ -59,8 +59,13 @@ export default function DashboardHome() {
     const fetchedUser = getUserFromToken();
     if (fetchedUser) {
       setUser(fetchedUser);
-      const savedRole = localStorage.getItem("preview_role") || fetchedUser.role;
-      setActiveRole(savedRole);
+      if (fetchedUser.role === "Administrator") {
+        const savedRole = localStorage.getItem("preview_role") || fetchedUser.role;
+        setActiveRole(savedRole);
+      } else {
+        localStorage.removeItem("preview_role");
+        setActiveRole(fetchedUser.role);
+      }
     }
 
     const handleRoleSwitch = (e: any) => {
@@ -79,6 +84,7 @@ export default function DashboardHome() {
   switch (currentRole) {
     case "Athlete":
       return <AthleteDashboard />;
+    case "Doctor":
     case "Physiotherapist":
       return <PhysioDashboard />;
     case "Sports Scientist":
