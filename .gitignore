@@ -1,34 +1,22 @@
-# Backend
+# Dependencies & Caches
 backend/venv/
+.venv/
 backend/__pycache__/
 backend/*.pyc
-backend/.env
-.env
-
-# Frontend (if not already handled by Next.js inner gitignore)
 frontend/node_modules/
 frontend/.next/
 frontend/.env.local
 frontend/.env.development.local
 
-# IDE
-.vscode/
-.idea/
+# SQLite Transient Lock Files
+*.db-shm
+*.db-wal
+
+# Ephemeral user video upload files
+backend/uploads/a_*
+backend/uploads/b_*
+
+# Temp & Editor swap files
 *.swp
 *.swo
-
-# Data & Uploads
-backend/*.db
-backend/*.db-wal
-backend/*.db-shm
-backend/uploads/
-backend/processed/
-*.db
-*.db-wal
-*.db-shm
-processed/
-uploads/
-*.mp4
-*.pt
-.venv/
-update_dashboard.py
+.DS_Store
