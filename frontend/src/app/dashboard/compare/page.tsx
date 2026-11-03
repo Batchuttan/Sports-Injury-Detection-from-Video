@@ -728,16 +728,76 @@ export default function ComparePage() {
             </div>
           )}
 
-          {/* Cross-Activity Discrepancy Notice */}
+          {/* Cross-Activity Discrepancy Notice - Prominent Attention-Grabbing Callout */}
           {comparisonResult.comparison.is_cross_activity && (
-            <div className="p-6 rounded-2xl bg-sky-500/10 border border-sky-500/30 text-sky-200 space-y-2 flex items-start gap-4">
-              <Sparkles className="w-6 h-6 text-sky-400 shrink-0 mt-0.5" />
-              <div className="space-y-1">
-                <h4 className="text-base font-bold text-sky-300">Cross-Activity Movement Discrepancy</h4>
-                <p className="text-xs text-sky-200/90 leading-relaxed">
-                  {comparisonResult.comparison.cross_activity_message}
+            <div className="p-6 sm:p-8 rounded-3xl bg-gradient-to-br from-amber-950/90 via-slate-900 to-orange-950/80 border-2 border-amber-400 text-amber-100 shadow-[0_0_50px_rgba(245,158,11,0.4)] ring-4 ring-amber-500/25 space-y-5 animate-fadeIn">
+              {/* Top Banner Tag & Huge Heading */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-500/30 pb-4">
+                <div className="flex items-center gap-3">
+                  <span className="p-2.5 rounded-2xl bg-amber-500 text-slate-950 font-black shadow-lg flex items-center justify-center shrink-0">
+                    <AlertTriangle className="w-7 h-7 sm:w-8 sm:h-8" />
+                  </span>
+                  <div>
+                    <span className="text-xs font-black uppercase tracking-widest text-amber-300 block">
+                      Cross-Activity Movement Discrepancy Alert
+                    </span>
+                    <h3 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight">
+                      PLEASE ADD 2 VIDEOS OF THE SAME ACTIVITY
+                    </h3>
+                  </div>
+                </div>
+
+                <span className="self-start sm:self-auto px-4 py-1.5 rounded-full bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider shadow-md shrink-0">
+                  Same Activity Required
+                </span>
+              </div>
+
+              {/* Big High-Priority Notice Box */}
+              <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/20 border-2 border-amber-400/60 space-y-2">
+                <div className="text-sm sm:text-base font-extrabold text-amber-200 flex items-center gap-2">
+                  <span>⚠️ For meaningful biomechanical comparison, accurate technique progression, and valid injury risk analysis:</span>
+                </div>
+                <p className="text-base sm:text-xl font-black text-white leading-relaxed">
+                  Please upload two recordings of the <span className="underline decoration-amber-400 decoration-2 underline-offset-4 text-amber-300">same athletic movement</span> (such as Sprinting vs. Sprinting or Squatting vs. Squatting) rather than comparing two different disciplines or non-athletic videos.
                 </p>
               </div>
+
+              {/* Detected Activity Badges Comparison */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-700/80 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                      Video 1 Classified Discipline
+                    </span>
+                    <strong className="text-base sm:text-lg font-bold text-indigo-300">
+                      {comparisonResult.video_a?.analytics?.activity_analyzed || "Video 1 Activity"}
+                    </strong>
+                  </div>
+                  <span className="text-xs px-3 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-semibold">
+                    Baseline
+                  </span>
+                </div>
+
+                <div className="p-4 rounded-xl bg-slate-900/90 border border-slate-700/80 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                      Video 2 Classified Discipline
+                    </span>
+                    <strong className="text-base sm:text-lg font-bold text-pink-300">
+                      {comparisonResult.video_b?.analytics?.activity_analyzed || "Video 2 Activity"}
+                    </strong>
+                  </div>
+                  <span className="text-xs px-3 py-1 rounded-lg bg-pink-500/20 text-pink-300 border border-pink-500/30 font-semibold">
+                    Trial
+                  </span>
+                </div>
+              </div>
+
+              {/* Underlying Discrepancy Explanation */}
+              <p className="text-xs sm:text-sm text-amber-200/90 leading-relaxed pt-1 font-medium">
+                {comparisonResult.comparison.cross_activity_message ||
+                  "Kinematic parameters and joint loading patterns reflect fundamentally distinct athletic disciplines. Cross-activity comparison is provided below for general posture and load evaluation."}
+              </p>
             </div>
           )}
 

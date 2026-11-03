@@ -696,6 +696,59 @@ export default function DualReportsArchivePage() {
               </div>
             </div>
 
+            {/* Cross-Activity Movement Discrepancy Alert in Dual Report Modal */}
+            {selectedComp.video_a_activity && selectedComp.video_b_activity && selectedComp.video_a_activity !== selectedComp.video_b_activity && (
+              <div className="p-6 sm:p-7 rounded-3xl bg-gradient-to-br from-amber-950/90 via-slate-900 to-orange-950/80 border-2 border-amber-400 text-amber-100 shadow-[0_0_45px_rgba(245,158,11,0.4)] ring-4 ring-amber-500/25 space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-500/30 pb-3">
+                  <div className="flex items-center gap-3">
+                    <span className="p-2.5 rounded-2xl bg-amber-500 text-slate-950 font-black shadow-md flex items-center justify-center shrink-0">
+                      <AlertTriangle className="w-6 h-6 sm:w-7 sm:h-7" />
+                    </span>
+                    <div>
+                      <span className="text-xs font-black uppercase tracking-widest text-amber-300 block">
+                        Cross-Activity Movement Discrepancy
+                      </span>
+                      <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
+                        PLEASE ADD 2 VIDEOS OF THE SAME ACTIVITY
+                      </h3>
+                    </div>
+                  </div>
+
+                  <span className="self-start sm:self-auto px-3.5 py-1.5 rounded-full bg-amber-400 text-slate-950 font-black text-xs uppercase tracking-wider shadow-md shrink-0">
+                    Same Activity Required
+                  </span>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-amber-500/20 border-2 border-amber-400/60 space-y-1.5">
+                  <p className="text-sm sm:text-base font-black text-white leading-relaxed">
+                    ⚠️ For valid biomechanical analysis, technique progression, and clinical risk evaluation, please upload two videos of the <span className="underline decoration-amber-400 decoration-2 underline-offset-4 text-amber-300">same athletic activity</span> (such as Sprinting vs. Sprinting or Squatting vs. Squatting).
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-700/80 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Video 1 Discipline</span>
+                      <strong className="text-base font-bold text-indigo-300">{selectedComp.video_a_activity}</strong>
+                    </div>
+                    <span className="text-xs px-2.5 py-1 rounded-lg bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-semibold">Baseline</span>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-700/80 flex items-center justify-between">
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Video 2 Discipline</span>
+                      <strong className="text-base font-bold text-pink-300">{selectedComp.video_b_activity}</strong>
+                    </div>
+                    <span className="text-xs px-2.5 py-1 rounded-lg bg-pink-500/20 text-pink-300 border border-pink-500/30 font-semibold">Trial</span>
+                  </div>
+                </div>
+
+                <p className="text-xs text-amber-200/90 leading-relaxed pt-1 font-medium">
+                  Activity Discrepancy: Video 1 was classified as &apos;{selectedComp.video_a_activity}&apos; while Video 2 was classified as &apos;{selectedComp.video_b_activity}&apos;. Kinematic parameters and joint loading patterns reflect fundamentally distinct athletic disciplines. Cross-activity comparison is provided below for general posture and load evaluation.
+                </p>
+              </div>
+            )}
+
             {/* Executive Verdict Banner */}
             <div className="glass-panel p-5 rounded-2xl border border-slate-800 relative overflow-hidden bg-slate-950/60">
               <div

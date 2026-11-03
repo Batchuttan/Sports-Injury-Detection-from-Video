@@ -1185,6 +1185,8 @@ def compare_two_video_analyses(result_a: dict, result_b: dict) -> dict:
         cross_activity_message = (
             f"Activity Discrepancy: Video 1 was classified as '{act_a}' while Video 2 was classified as '{act_b}'. "
             "Kinematic parameters and joint loading patterns reflect fundamentally distinct athletic disciplines. "
+            "PLEASE ADD 2 VIDEOS OF THE SAME ACTIVITY (such as Sprinting vs. Sprinting or Squatting vs. Squatting) "
+            "for accurate comparative kinematics, technique progression, and clinical risk evaluation. "
             "Cross-activity comparison is provided below for general posture and load evaluation."
         )
 
