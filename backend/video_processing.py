@@ -67,6 +67,10 @@ def classify_all_actions(
     elbow_angles_r=None,
     trunk_leans=None,
     head_tilts=None,
+    shoulder_x_l=None,
+    shoulder_y_l=None,
+    shoulder_x_r=None,
+    shoulder_y_r=None,
     fps=25.0
 ):
     """
@@ -137,9 +141,13 @@ def classify_all_actions(
     ank_l_x_arr = np.array(ankle_x_l) / norm_h if ankle_x_l else np.array([])
     ank_r_x_arr = np.array(ankle_x_r) / norm_h if ankle_x_r else np.array([])
     wrist_l_y_arr = np.array(wrist_y_l) / norm_h if wrist_y_l else np.array([])
-    wrist_r_y_arr = np.array(wrist_r_y_l := wrist_y_r) / norm_h if wrist_y_r else np.array([])
+    wrist_r_y_arr = np.array(wrist_y_r) / norm_h if wrist_y_r else np.array([])
     wrist_l_x_arr = np.array(wrist_x_l) / norm_h if wrist_x_l else np.array([])
     wrist_r_x_arr = np.array(wrist_x_r) / norm_h if wrist_x_r else np.array([])
+    sh_l_x_arr = np.array(shoulder_x_l) / norm_h if shoulder_x_l else np.array([])
+    sh_l_y_arr = np.array(shoulder_y_l) / norm_h if shoulder_y_l else np.array([])
+    sh_r_x_arr = np.array(shoulder_x_r) / norm_h if shoulder_x_r else np.array([])
+    sh_r_y_arr = np.array(shoulder_y_r) / norm_h if shoulder_y_r else np.array([])
 
     knee_l_arr = np.array(knee_angles_l) if knee_angles_l else np.array([])
     knee_r_arr = np.array(knee_angles_r) if knee_angles_r else np.array([])
@@ -189,11 +197,23 @@ def classify_all_actions(
     rom_wl = float(np.ptp(wrist_l_y_arr)) if len(wrist_l_y_arr) > 0 else 0.0
     rom_wr = float(np.ptp(wrist_r_y_arr)) if len(wrist_r_y_arr) > 0 else 0.0
     wrist_rom = max(rom_wl, rom_wr)
-
     n_w = min(len(wrist_l_y_arr), len(wrist_r_y_arr))
     wrist_corr = float(np.corrcoef(wrist_l_y_arr[:n_w], wrist_r_y_arr[:n_w])[0, 1]) if (n_w > 10 and np.std(wrist_l_y_arr[:n_w]) > 0.01 and np.std(wrist_r_y_arr[:n_w]) > 0.01) else 0.0
 
     elbow_rom = float(max(np.ptp(elbow_l_arr), np.ptp(elbow_r_arr))) if (len(elbow_l_arr) > 0 and len(elbow_r_arr) > 0) else 0.0
+
+    # Relative arm velocity to shoulders
+    rel_arm_v = 0.0
+    if len(wrist_l_x_arr) > 5 and len(sh_l_x_arr) > 5:
+        n_arm = min(len(wrist_l_x_arr), len(sh_l_x_arr))
+        arm_v_l = np.sqrt(np.diff(wrist_l_x_arr[:n_arm] - sh_l_x_arr[:n_arm])**2 + np.diff(wrist_l_y_arr[:n_arm] - sh_l_y_arr[:n_arm])**2) / dt
+        rel_arm_v = max(rel_arm_v, float(np.percentile(arm_v_l, 95)))
+    if len(wrist_r_x_arr) > 5 and len(sh_r_x_arr) > 5:
+        n_arm = min(len(wrist_r_x_arr), len(sh_r_x_arr))
+        arm_v_r = np.sqrt(np.diff(wrist_r_x_arr[:n_arm] - sh_r_x_arr[:n_arm])**2 + np.diff(wrist_r_y_arr[:n_arm] - sh_r_y_arr[:n_arm])**2) / dt
+        rel_arm_v = max(rel_arm_v, float(np.percentile(arm_v_r, 95)))
+    if rel_arm_v == 0.0:
+        rel_arm_v = peak_vw
 
     # 3. Knee Kinematics
     n_k = min(len(knee_l_arr), len(knee_r_arr))
@@ -215,7 +235,7 @@ def classify_all_actions(
     lat_reversals = int(np.sum(np.diff(np.sign(sig_vhx)) != 0)) if len(sig_vhx) > 3 else 0
 
     # Overall non-sports check
-    if rom_k < 14.0 and mean_stride < 0.06 and hip_vert_rom < 0.04 and peak_bilat_flight < 0.025 and peak_vw < 1.4:
+    if (rom_k < 14.0 and mean_stride < 0.06 and hip_vert_rom < 0.04 and peak_bilat_flight < 0.025 and peak_vw < 1.4) or athletic_ratio < 0.22:
         breakdown = []
         for name in ACTION_NAMES:
             breakdown.append({
@@ -232,174 +252,175 @@ def classify_all_actions(
             "breakdown": breakdown
         }
 
-    # ================= 7 SPECIFIC ACTIONS EVALUATION =================
+    # ================= 7 SPECIFIC ACTIONS EMPIRICAL KINETIC ENGINE =================
+    scores = {}
 
-    # Gait & Locomotion Characterization
-    # Running/sprinting involves alternating swing/stance phases, high knee asymmetry (one leg flexed while other extended),
-    # cyclical ankle velocity, and stride spread.
-    req_act = (requested_activity or "").lower()
-    is_alternating_gait = bool(
-        (mean_knee_diff > 7.0 and (gait_alternations >= 1 or max_stride > 0.08 or mean_stride > 0.04)) or
-        (gait_alternations >= 1) or
-        (mean_knee_diff > 10.0) or
-        (peak_va > 1.2 and (mean_stride > 0.04 or max_stride > 0.08)) or
-        (peak_va > 1.4)
-    )
-
-    # 1. SPRINTING (High-Velocity / Locomotion / Running)
-    sprint_perf = bool(
-        # Alternating locomotion with moderate-to-high velocity or running flight
-        (is_alternating_gait and (peak_va > 1.0 or peak_bilat_flight > 0.02 or mean_stride > 0.04 or rom_k > 25.0)) or
-        (peak_va > 1.5 and (gait_alternations >= 1 or mean_knee_diff > 5.0 or mean_stride > 0.04)) or
-        (peak_bilat_flight > 0.02 and is_alternating_gait) or
-        (peak_va > 2.5) or
-        # Requested activity confirmation with athletic locomotion telemetry
-        (("sprint" in req_act or "run" in req_act) and (peak_va > 0.9 or is_alternating_gait or mean_stride > 0.04))
-    )
-    if sprint_perf:
-        sprint_conf = round(min(99.5, max(75.0, (peak_va / 10.0) * 55 + (rom_k / 90.0) * 25 + 20)), 1)
-        sprint_ev = f"High-velocity explosive sprint cadence confirmed (Peak swing velocity: {peak_va:.2f} H/s, Knee drive ROM: {rom_k:.0f}°, Stride gait: {mean_stride:.2f})."
+    # 1. SQUATTING
+    squat_score = 0.0
+    if min_k < 120.0 and rom_k > 40.0:
+        depth_pts = max(0.0, (120.0 - min_k) / 30.0) * 45.0
+        rom_pts = min(35.0, (rom_k / 75.0) * 35.0)
+        squat_score += depth_pts + rom_pts
+    if hip_vert_rom > 0.12:
+        squat_score += min(20.0, (hip_vert_rom / 0.25) * 20.0)
+    if peak_bilat_flight < 0.045:
+        squat_score += 15.0
     else:
-        sprint_conf = round(min(45.0, (peak_va / 4.0) * 35.0), 1)
-        sprint_ev = f"Cadence or stride velocity below maximal sprinting threshold (Peak swing velocity: {peak_va:.2f} H/s)."
-
-    # 2. SQUATTING
-    squat_perf = bool(peak_va < 1.2 and min_k < 100.0 and rom_k > 50.0 and peak_bilat_flight < 0.08 and peak_vw < 1.8 and not sprint_perf and not is_alternating_gait)
-    if squat_perf:
-        depth_score = max(0.0, (100.0 - min_k) / 40.0) * 45.0
-        squat_conf = round(min(99.0, max(70.0, 40.0 + depth_score + (rom_k / 110.0) * 25.0)), 1)
-        squat_ev = f"Planted-foot bilateral synchronous knee flexion confirmed (Squat depth: {min_k:.0f}°, Knee excursion ROM: {rom_k:.0f}°, zero flight)."
+        squat_score -= 40.0
+    if gait_alternations <= 1:
+        squat_score += 15.0
     else:
-        squat_conf = round(min(40.0, (rom_k / 60.0) * 30.0 if (peak_va < 1.2 and not sprint_perf) else 5.0), 1)
-        squat_ev = f"Incomplete squat depth or athlete engaged in ambulatory/flight motion (Min knee: {min_k:.0f}°, Knee ROM: {rom_k:.0f}°)."
+        squat_score -= gait_alternations * 15.0
+    if knee_corr > 0.35:
+        squat_score += 10.0
+    scores["Squatting"] = max(0.0, squat_score)
+
+    # 2. JUMPING
+    jump_score = 0.0
+    if peak_bilat_flight > 0.045:
+        jump_score += min(55.0, (peak_bilat_flight / 0.15) * 55.0)
+    if hip_vert_rom > 0.14 and (up_v > 0.5 or down_v > 0.5):
+        jump_score += min(30.0, (hip_vert_rom / 0.25) * 30.0)
+    if knee_corr > 0.55:
+        jump_score += 20.0
+    elif knee_corr > 0.25:
+        jump_score += 10.0
+    if gait_alternations <= 2:
+        jump_score += 10.0
+    else:
+        jump_score -= gait_alternations * 12.0
+    scores["Jumping"] = max(0.0, jump_score)
 
     # 3. THROWING
-    throw_perf = bool(
-        (peak_vw > 2.0 and elbow_rom > 45.0 and peak_va > 1.1 and not sprint_perf and not squat_perf and not is_alternating_gait) or
-        (peak_vw > 3.0 and elbow_rom > 55.0 and not sprint_perf and not squat_perf and wrist_corr < 0.45)
-    )
-    if throw_perf:
-        throw_conf = round(min(98.5, max(70.0, (peak_vw / 4.0) * 50 + (elbow_rom / 150.0) * 30 + 20)), 1)
-        throw_ev = f"Ballistic upper kinetic chain strike & arm extension confirmed (Peak wrist velocity: {peak_vw:.2f} H/s, Elbow ROM: {elbow_rom:.0f}°)."
-    else:
-        throw_conf = round(min(45.0, (peak_vw / 2.0) * 30.0 if not sprint_perf else 10.0), 1)
-        throw_ev = f"Wrist velocity or arm extension below ballistic throwing threshold (Peak wrist velocity: {peak_vw:.2f} H/s)."
+    throw_score = 0.0
+    if elbow_rom > 80.0:
+        throw_score += min(40.0, (elbow_rom / 150.0) * 40.0)
+    if rel_arm_v > 1.2 or peak_vw > 1.8:
+        arm_v_metric = max(rel_arm_v, peak_vw)
+        throw_score += min(40.0, (arm_v_metric / 3.5) * 40.0)
+    if wrist_v_asym > 0.30:
+        throw_score += 15.0
 
-    # 4. JUMPING
-    # A genuine jump features bilateral vertical impulse takeoff and synchronous leg action.
-    # Alternating leg locomotion / running flight phases MUST NOT be classified as jumping.
-    jump_perf = bool(
-        (peak_bilat_flight > 0.09 or (peak_bilat_flight > 0.05 and up_v > 0.45 and (wrist_corr > 0.35 or knee_corr > 0.15)))
-        and not is_alternating_gait
-        and not sprint_perf
-        and not squat_perf
-        and not throw_perf
-        and mean_knee_diff <= 8.0
-        and max_stride <= 0.12
-    )
-    if jump_perf:
-        jump_conf = round(min(99.0, max(70.0, (peak_bilat_flight / 0.18) * 50 + (up_v / 1.5) * 30 + 20)), 1)
-        jump_ev = f"Bilateral airborne flight & vertical impulse takeoff confirmed (Flight clearance: {peak_bilat_flight*100:.1f}%, Upward takeoff velocity: {up_v:.2f} H/s)."
-    else:
-        jump_conf = round(min(45.0, (peak_bilat_flight / 0.10) * 35.0 if not sprint_perf else 8.0), 1)
-        jump_ev = f"Insufficient bilateral airborne clearance ({peak_bilat_flight*100:.1f}%) and lack of vertical impulse takeoff."
+    if min_k < 105.0 and rom_k > 55.0 and peak_bilat_flight < 0.04 and gait_alternations <= 1:
+        throw_score -= 50.0
+    if gait_alternations > 6:
+        throw_score -= 30.0
+    scores["Throwing"] = max(0.0, throw_score)
+
+    # 4. SPRINTING
+    sprint_score = 0.0
+    if gait_alternations >= 3:
+        sprint_score += min(55.0, (gait_alternations / 8.0) * 55.0)
+    if peak_va > 1.8:
+        sprint_score += min(30.0, (peak_va / 4.0) * 30.0)
+    if mean_stride > 0.10:
+        sprint_score += min(20.0, (mean_stride / 0.25) * 20.0)
+    if gait_alternations <= 1 or (throw_score >= 60.0 and elbow_rom > 120.0 and peak_vw > 2.0 and gait_alternations < 6):
+        sprint_score = 0.0
+    scores["Sprinting"] = max(0.0, sprint_score)
 
     # 5. LANDING
-    land_perf = bool(
-        (jump_perf or (peak_bilat_flight > 0.06 and not is_alternating_gait) or (hip_vert_rom > 0.12 and mean_stride < 0.10 and not is_alternating_gait))
-        and down_v > 0.55 and min_k < 142.0 and rom_k > 20.0 and not sprint_perf
-    )
-    if land_perf:
-        land_conf = round(min(98.5, max(68.0, (down_v / 1.5) * 45 + (peak_bilat_flight / 0.15) * 35 + 20)), 1)
-        land_ev = f"Ground touchdown impact absorption & knee deceleration confirmed (Descent velocity: {down_v:.2f} H/s, Absorption flexion: {min_k:.0f}°)."
-    else:
-        land_conf = round(min(40.0, (down_v / 0.55) * 25.0 if jump_perf else 8.0), 1)
-        land_ev = "No vertical impact landing or knee ground deceleration phase observed."
+    land_score = 0.0
+    if (peak_bilat_flight > 0.04 or jump_score > 40.0) and down_v > 0.55 and min_k < 142.0 and rom_k > 20.0:
+        land_score += min(45.0, (down_v / 1.5) * 45.0)
+        land_score += min(30.0, (peak_bilat_flight / 0.12) * 30.0)
+        land_score += max(0.0, (142.0 - min_k) / 35.0) * 25.0
+    if gait_alternations > 3:
+        land_score -= 35.0
+    scores["Landing"] = max(0.0, land_score)
 
     # 6. CUTTING MOVEMENTS
-    cut_perf = bool((lat_reversals >= 1) and (max_lat_accel > 28.0) and (max_stride > 0.14) and not squat_perf and not throw_perf)
-    if cut_perf:
-        cut_conf = round(min(98.0, max(65.0, (max_lat_accel / 50.0) * 50 + (max_stride / 0.28) * 30 + 20)), 1)
-        cut_ev = f"Sharp lateral plant-and-cut redirection observed (Peak lateral deceleration: {max_lat_accel:.1f} W/s², Reversals: {lat_reversals})."
-    else:
-        cut_conf = round(min(45.0, (max_lat_accel / 28.0) * 25.0 if lat_reversals >= 1 else 10.0), 1)
-        cut_ev = "No abrupt lateral deceleration plant step or change of direction detected."
+    cut_score = 0.0
+    if lat_reversals >= 1 and max_lat_accel > 18.0 and mean_stride > 0.12 and gait_alternations >= 2:
+        cut_score += min(50.0, (max_lat_accel / 45.0) * 50.0)
+        cut_score += min(30.0, (lat_reversals / 3.0) * 30.0)
+        cut_score += min(20.0, (max_stride / 0.25) * 20.0)
+    scores["Cutting Movements"] = max(0.0, cut_score)
 
     # 7. SPORTS SPECIFIC DRILLS
-    drill_perf = bool((lat_reversals >= 3 and max_lat_accel > 22.0 and rom_k > 30.0) and not squat_perf and not throw_perf)
-    if drill_perf:
-        drill_conf = round(min(97.0, max(65.0, (max_lat_accel / 50.0) * 40 + (mean_stride / 0.16) * 35 + (rom_k / 75.0) * 25)), 1)
-        drill_ev = f"Agility drill footwork & dynamic multi-directional movement detected (Lateral agility index: {max_lat_accel:.1f}, Reversals: {lat_reversals})."
+    drill_score = 0.0
+    if lat_reversals >= 3 and max_lat_accel > 16.0 and gait_alternations >= 2:
+        drill_score += min(45.0, (lat_reversals / 5.0) * 45.0)
+        drill_score += min(35.0, (max_lat_accel / 35.0) * 35.0)
+        drill_score += min(20.0, (rom_k / 60.0) * 20.0)
+    scores["Sports Specific Drills"] = max(0.0, drill_score)
+
+    best_action = max(scores, key=scores.get)
+    best_score = scores[best_action]
+
+    if best_score < 30.0:
+        primary_action = "Non-Sports / No Athletic Movement Detected"
     else:
-        drill_conf = round(min(40.0, (lat_reversals / 3.0) * 25.0 if lat_reversals > 0 else 10.0), 1)
-        drill_ev = "Continuous agile foot turnover or multi-directional drill sequencing not detected."
+        primary_action = best_action
+
+    squat_perf = bool(scores["Squatting"] >= 60.0 or (best_action == "Squatting" and scores["Squatting"] >= 40.0))
+    jump_perf = bool(scores["Jumping"] >= 60.0 or (best_action == "Jumping" and scores["Jumping"] >= 40.0))
+    throw_perf = bool(scores["Throwing"] >= 60.0 or (best_action == "Throwing" and scores["Throwing"] >= 40.0))
+    sprint_perf = bool(scores["Sprinting"] >= 60.0 or (best_action == "Sprinting" and scores["Sprinting"] >= 40.0))
+    land_perf = bool(scores["Landing"] >= 60.0 or (best_action == "Landing" and scores["Landing"] >= 40.0))
+    cut_perf = bool(scores["Cutting Movements"] >= 60.0 or (best_action == "Cutting Movements" and scores["Cutting Movements"] >= 40.0))
+    drill_perf = bool(scores["Sports Specific Drills"] >= 60.0 or (best_action == "Sports Specific Drills" and scores["Sports Specific Drills"] >= 40.0))
+
+    # Evidence strings
+    squat_ev = f"Planted-foot bilateral synchronous knee flexion confirmed (Squat depth: {min_k:.0f}°, Knee excursion ROM: {rom_k:.0f}°, zero flight)." if squat_perf else f"Incomplete squat depth or athlete not engaged in bilateral squatting (Min knee: {min_k:.0f}°, Knee ROM: {rom_k:.0f}°)."
+    jump_ev = f"Bilateral airborne flight & vertical impulse takeoff confirmed (Flight clearance: {peak_bilat_flight*100:.1f}%, Upward takeoff velocity: {up_v:.2f} H/s)." if jump_perf else f"Insufficient bilateral airborne clearance ({peak_bilat_flight*100:.1f}%) and lack of vertical impulse takeoff."
+    throw_ev = f"Ballistic upper kinetic chain strike & arm extension confirmed (Peak wrist velocity: {peak_vw:.2f} H/s, Elbow ROM: {elbow_rom:.0f}°)." if throw_perf else f"Wrist velocity or arm extension below ballistic throwing threshold (Peak wrist velocity: {peak_vw:.2f} H/s)."
+    sprint_ev = f"High-velocity explosive sprint cadence confirmed (Peak swing velocity: {peak_va:.2f} H/s, Gait alternations: {gait_alternations}, Stride gait: {mean_stride:.2f})." if sprint_perf else f"Lack of sustained cyclical alternating gait cycles or ankle speed below sprinting threshold (Gait alternations: {gait_alternations})."
+    land_ev = f"Ground touchdown impact absorption & knee deceleration confirmed (Descent velocity: {down_v:.2f} H/s, Absorption flexion: {min_k:.0f}°)." if land_perf else "No vertical impact landing or knee ground deceleration phase observed."
+    cut_ev = f"Sharp lateral plant-and-cut redirection observed (Peak lateral deceleration: {max_lat_accel:.1f} W/s², Reversals: {lat_reversals})." if cut_perf else "No abrupt lateral deceleration plant step or change of direction detected."
+    drill_ev = f"Agility drill footwork & dynamic multi-directional movement detected (Lateral agility index: {max_lat_accel:.1f}, Reversals: {lat_reversals})." if drill_perf else "Continuous agile foot turnover or multi-directional drill sequencing not detected."
+
+    def make_conf(perf, score):
+        if perf:
+            return round(min(99.0, max(65.0, score * 0.9 + 15.0)), 1)
+        return round(min(45.0, max(5.0, score * 0.45)), 1)
 
     results = {
         "Jumping": {
             "performed": jump_perf,
-            "confidence": jump_conf,
+            "confidence": make_conf(jump_perf, scores["Jumping"]),
             "evidence": jump_ev,
             "key_metric": f"Flight Clearance: {peak_bilat_flight*100:.1f}%"
         },
         "Squatting": {
             "performed": squat_perf,
-            "confidence": squat_conf,
+            "confidence": make_conf(squat_perf, scores["Squatting"]),
             "evidence": squat_ev,
             "key_metric": f"Squat Depth: {min_k:.0f}°"
         },
         "Sprinting": {
             "performed": sprint_perf,
-            "confidence": sprint_conf,
+            "confidence": make_conf(sprint_perf, scores["Sprinting"]),
             "evidence": sprint_ev,
             "key_metric": f"Peak Sprint V: {peak_va:.2f} H/s"
         },
         "Landing": {
             "performed": land_perf,
-            "confidence": land_conf,
+            "confidence": make_conf(land_perf, scores["Landing"]),
             "evidence": land_ev,
             "key_metric": f"Touchdown Descent: {down_v:.2f} H/s"
         },
         "Throwing": {
             "performed": throw_perf,
-            "confidence": throw_conf,
+            "confidence": make_conf(throw_perf, scores["Throwing"]),
             "evidence": throw_ev,
             "key_metric": f"Wrist Velocity: {peak_vw:.2f} H/s"
         },
         "Cutting Movements": {
             "performed": cut_perf,
-            "confidence": cut_conf,
+            "confidence": make_conf(cut_perf, scores["Cutting Movements"]),
             "evidence": cut_ev,
             "key_metric": f"Lateral Decel: {max_lat_accel:.1f} W/s²"
         },
         "Sports Specific Drills": {
             "performed": drill_perf,
-            "confidence": drill_conf,
+            "confidence": make_conf(drill_perf, scores["Sports Specific Drills"]),
             "evidence": drill_ev,
             "key_metric": f"Agility Index: {max_lat_accel:.1f}"
         }
     }
 
     performed_list = [name for name, data in results.items() if data["performed"]]
-
-    # Dominant Action Selection Hierarchy
-    if squat_perf:
-        primary_action = "Squatting"
-    elif throw_perf:
-        primary_action = "Throwing"
-    elif sprint_perf:
-        primary_action = "Sprinting"
-    elif jump_perf and not is_alternating_gait:
-        primary_action = "Jumping"
-    elif land_perf and not is_alternating_gait:
-        primary_action = "Landing"
-    elif cut_perf:
-        primary_action = "Cutting Movements"
-    elif drill_perf:
-        primary_action = "Sports Specific Drills"
-    elif performed_list:
-        primary_action = max(performed_list, key=lambda k: results[k]["confidence"])
-    else:
-        primary_action = "Athletic Movement"
 
     breakdown = []
     for name in ACTION_NAMES:
@@ -451,7 +472,11 @@ def temporal_action_recognition_and_localization(
     elbow_angles_l: list = None,
     elbow_angles_r: list = None,
     trunk_leans: list = None,
-    head_tilts: list = None
+    head_tilts: list = None,
+    shoulder_x_l: list = None,
+    shoulder_y_l: list = None,
+    shoulder_x_r: list = None,
+    shoulder_y_r: list = None
 ) -> dict:
     """
     Dedicated Multi-Branch Video Action Recognition & Temporal Action Localization Pipeline:
@@ -504,8 +529,8 @@ def temporal_action_recognition_and_localization(
     w_step = max(4, int(round(0.75 * fps)))
 
     CLASSES = [
-        "Sprinting", "Running", "Jumping", "Squatting",
-        "Throwing", "Cutting Movements", "Walking", "Sports Specific Drills"
+        "Sprinting", "Jumping", "Squatting",
+        "Throwing", "Cutting Movements", "Sports Specific Drills"
     ]
 
     window_results = []
@@ -520,65 +545,156 @@ def temporal_action_recognition_and_localization(
         end_sec = end_idx * dt
 
         # RGB Temporal motion features for this window
-        win_densities = pixel_motion_densities[start_idx:end_idx] if pixel_motion_densities else [0.0]
-        win_energies = pixel_motion_energies[start_idx:end_idx] if pixel_motion_energies else [0.0]
+        win_densities = pixel_motion_densities[start_idx:end_idx] if pixel_motion_densities and len(pixel_motion_densities) > start_idx else [0.0]
+        win_energies = pixel_motion_energies[start_idx:end_idx] if pixel_motion_energies and len(pixel_motion_energies) > start_idx else [0.0]
         rgb_density = float(np.mean(win_densities)) if win_densities else 0.0
         rgb_energy = float(np.mean(win_energies)) if win_energies else 0.0
-        rgb_variance = float(np.var(win_energies)) if win_energies else 0.0
 
         # Pose Kinematic features for this window
         win_knees_l = knee_angles_l[start_idx:end_idx] if knee_angles_l and len(knee_angles_l) > start_idx else []
         win_knees_r = knee_angles_r[start_idx:end_idx] if knee_angles_r and len(knee_angles_r) > start_idx else []
         win_hips_y = hip_y_positions[start_idx:end_idx] if hip_y_positions and len(hip_y_positions) > start_idx else []
-        win_strides = stride_spreads[start_idx:end_idx] if stride_spreads and len(stride_spreads) > start_idx else []
-        win_wrist_l = wrist_x_l[start_idx:end_idx] if wrist_x_l and len(wrist_x_l) > start_idx else []
-        win_wrist_r = wrist_x_r[start_idx:end_idx] if wrist_x_r and len(wrist_x_r) > start_idx else []
-        win_trunks = trunk_leans[start_idx:end_idx] if trunk_leans and len(trunk_leans) > start_idx else []
+        win_ay_l = ankle_y_l[start_idx:end_idx] if ankle_y_l and len(ankle_y_l) > start_idx else []
+        win_ay_r = ankle_y_r[start_idx:end_idx] if ankle_y_r and len(ankle_y_r) > start_idx else []
+        win_ax_l = ankle_x_l[start_idx:end_idx] if ankle_x_l and len(ankle_x_l) > start_idx else []
+        win_ax_r = ankle_x_r[start_idx:end_idx] if ankle_x_r and len(ankle_x_r) > start_idx else []
+        win_wx_l = wrist_x_l[start_idx:end_idx] if wrist_x_l and len(wrist_x_l) > start_idx else []
+        win_wy_l = wrist_y_l[start_idx:end_idx] if wrist_y_l and len(wrist_y_l) > start_idx else []
+        win_wx_r = wrist_x_r[start_idx:end_idx] if wrist_x_r and len(wrist_x_r) > start_idx else []
+        win_wy_r = wrist_y_r[start_idx:end_idx] if wrist_y_r and len(wrist_y_r) > start_idx else []
+        win_el_l = elbow_angles_l[start_idx:end_idx] if elbow_angles_l and len(elbow_angles_l) > start_idx else []
+        win_el_r = elbow_angles_r[start_idx:end_idx] if elbow_angles_r and len(elbow_angles_r) > start_idx else []
+        win_hx = hip_x_positions[start_idx:end_idx] if hip_x_positions and len(hip_x_positions) > start_idx else []
 
-        knee_flex_range = float(np.ptp(win_knees_l)) if len(win_knees_l) > 2 else 0.0
-        hip_vert_range = float(np.ptp(win_hips_y)) if len(win_hips_y) > 2 else 0.0
-        mean_stride = float(np.mean(win_strides)) if win_strides else 0.0
-        min_knee = min(float(np.min(win_knees_l)) if len(win_knees_l) > 0 else 180.0, float(np.min(win_knees_r)) if len(win_knees_r) > 0 else 180.0)
-        arm_disp = float(np.ptp(win_wrist_l) + np.ptp(win_wrist_r)) if win_wrist_l and win_wrist_r else 0.0
-        mean_trunk = float(np.mean(win_trunks)) if win_trunks else 0.0
+        w_min_k = min(float(np.min(win_knees_l)) if win_knees_l else 180.0, float(np.min(win_knees_r)) if win_knees_r else 180.0)
+        w_rom_k = max(float(np.ptp(win_knees_l)) if win_knees_l else 0.0, float(np.ptp(win_knees_r)) if win_knees_r else 0.0)
+        w_nk = min(len(win_knees_l), len(win_knees_r))
+        w_k_corr = float(np.corrcoef(win_knees_l[:w_nk], win_knees_r[:w_nk])[0, 1]) if (w_nk > 4 and np.std(win_knees_l[:w_nk]) > 0.5 and np.std(win_knees_r[:w_nk]) > 0.5) else 0.0
 
-        # Branch 1: RGB Temporal Dynamics Scores (SlowFast / VideoMAE)
-        rgb_scores = {}
-        rgb_scores["Sprinting"] = min(0.98, max(0.1, (rgb_energy / 8.0) * 0.6 + (rgb_density / 0.12) * 0.4))
-        rgb_scores["Running"] = min(0.95, max(0.1, (rgb_energy / 5.5) * 0.5 + (rgb_density / 0.08) * 0.5))
-        rgb_scores["Jumping"] = min(0.96, max(0.1, (rgb_variance / 4.0) * 0.7 + (rgb_energy / 6.0) * 0.3))
-        rgb_scores["Squatting"] = min(0.95, max(0.1, (0.05 / max(0.01, rgb_density)) * 0.3 + (rgb_energy / 4.0) * 0.7))
-        rgb_scores["Throwing"] = min(0.94, max(0.1, (rgb_variance / 3.0) * 0.5 + (rgb_energy / 5.0) * 0.5))
-        rgb_scores["Cutting Movements"] = min(0.95, max(0.1, (rgb_variance / 3.5) * 0.6 + (rgb_density / 0.10) * 0.4))
-        rgb_scores["Walking"] = min(0.92, max(0.05, 0.7 - (rgb_energy / 10.0)))
-        rgb_scores["Sports Specific Drills"] = 0.55
+        # Flight
+        w_gl = float(np.percentile(win_ay_l, 85)) if len(win_ay_l) > 4 else norm_h
+        w_gr = float(np.percentile(win_ay_r, 85)) if len(win_ay_r) > 4 else norm_h
+        w_nay = min(len(win_ay_l), len(win_ay_r))
+        if w_nay > 0:
+            w_bilat = np.minimum(np.maximum(0, w_gl - np.array(win_ay_l[:w_nay])), np.maximum(0, w_gr - np.array(win_ay_r[:w_nay]))) / norm_h
+            w_flight = float(np.percentile(w_bilat, 95)) if len(w_bilat) > 4 else 0.0
+        else:
+            w_flight = 0.0
 
-        # Branch 2: 3D Pose Skeleton Dynamics Scores (PoseC3D / ST-GCN)
-        pose_scores = {}
-        pose_scores["Sprinting"] = min(0.98, max(0.1, (mean_stride / (0.35 * norm_h)) * 0.45 + (knee_flex_range / 55.0) * 0.35 + (mean_trunk / 30.0) * 0.20))
-        pose_scores["Running"] = min(0.94, max(0.1, (mean_stride / (0.28 * norm_h)) * 0.5 + (knee_flex_range / 45.0) * 0.5))
-        pose_scores["Jumping"] = min(0.97, max(0.1, (hip_vert_range / (0.22 * norm_h)) * 0.7 + (knee_flex_range / 45.0) * 0.3))
-        pose_scores["Squatting"] = min(0.98, max(0.1, ((180.0 - min_knee) / 85.0) * 0.7 + (hip_vert_range / (0.18 * norm_h)) * 0.3))
-        pose_scores["Throwing"] = min(0.96, max(0.1, (arm_disp / (0.45 * norm_h)) * 0.8))
-        pose_scores["Cutting Movements"] = 0.50
-        pose_scores["Walking"] = min(0.90, max(0.05, (mean_stride / (0.18 * norm_h)) * 0.5))
-        pose_scores["Sports Specific Drills"] = 0.50
+        # Gait alternations & Stride
+        w_nax = min(len(win_ax_l), len(win_ax_r))
+        if w_nax > 0:
+            w_fd = (np.array(win_ax_l[:w_nax]) - np.array(win_ax_r[:w_nax])) / norm_h
+            w_sig = w_fd[np.abs(w_fd) > 0.06]
+            w_gait_alts = int(np.sum(np.diff(np.sign(w_sig)) != 0)) if len(w_sig) > 2 else 0
+            w_stride = float(np.mean(np.abs(w_fd)))
+        else:
+            w_gait_alts, w_stride = 0, 0.0
 
-        # Feature Fusion
-        fused = {}
-        for c in CLASSES:
-            fused[c] = round(0.55 * pose_scores.get(c, 0.5) + 0.45 * rgb_scores.get(c, 0.5), 3)
+        # Hip vertical
+        w_vhy = np.diff(win_hips_y) / (dt * norm_h) if len(win_hips_y) > 1 else np.array([0.0])
+        w_up_v = float(-np.min(w_vhy)) if len(w_vhy) > 0 else 0.0
+        w_down_v = float(np.max(w_vhy)) if len(w_vhy) > 0 else 0.0
+        w_hip_rom = float(np.ptp(win_hips_y)) / norm_h if len(win_hips_y) > 0 else 0.0
 
-        best_class = max(fused, key=fused.get)
-        best_conf = fused[best_class]
+        # Wrist & Elbow
+        w_vwl = np.sqrt(np.diff(win_wx_l)**2 + np.diff(win_wy_l)**2) / (dt * norm_h) if len(win_wx_l) > 1 else np.array([0.0])
+        w_vwr = np.sqrt(np.diff(win_wx_r)**2 + np.diff(win_wy_r)**2) / (dt * norm_h) if len(win_wx_r) > 1 else np.array([0.0])
+        w_p_vw = max(float(np.percentile(w_vwl, 95)) if len(w_vwl) > 4 else 0.0, float(np.percentile(w_vwr, 95)) if len(w_vwr) > 4 else 0.0)
+        w_el_rom = max(float(np.ptp(win_el_l)) if win_el_l else 0.0, float(np.ptp(win_el_r)) if win_el_r else 0.0)
+
+        # Ankle speed
+        w_val = np.sqrt(np.diff(win_ax_l)**2 + np.diff(win_ay_l)**2) / (dt * norm_h) if len(win_ax_l) > 1 else np.array([0.0])
+        w_var = np.sqrt(np.diff(win_ax_r)**2 + np.diff(win_ay_r)**2) / (dt * norm_h) if len(win_ax_r) > 1 else np.array([0.0])
+        w_p_va = max(float(np.percentile(w_val, 95)) if len(w_val) > 4 else 0.0, float(np.percentile(w_var, 95)) if len(w_var) > 4 else 0.0)
+
+        # Lateral reversals
+        w_vhx = np.diff(win_hx) / (dt * norm_h) if len(win_hx) > 1 else np.array([0.0])
+        w_ahx = np.diff(w_vhx) / dt if len(w_vhx) > 1 else np.array([0.0])
+        w_lat_accel = float(np.percentile(np.abs(w_ahx), 95)) if len(w_ahx) > 4 else 0.0
+        w_sig_vhx = w_vhx[np.abs(w_vhx) > 0.02]
+        w_lat_rev = int(np.sum(np.diff(np.sign(w_sig_vhx)) != 0)) if len(w_sig_vhx) > 2 else 0
+
+        # Physical Action Scoring for Window
+        w_scores = {}
+
+        # Squatting
+        sq_score = 0.0
+        if w_min_k < 120.0 and w_rom_k > 35.0:
+            sq_score += max(0.0, (120.0 - w_min_k) / 30.0) * 45.0 + min(35.0, (w_rom_k / 75.0) * 35.0)
+        if w_hip_rom > 0.10:
+            sq_score += min(20.0, (w_hip_rom / 0.20) * 20.0)
+        if w_flight < 0.045:
+            sq_score += 15.0
+        else:
+            sq_score -= 40.0
+        if w_gait_alts <= 1:
+            sq_score += 15.0
+        else:
+            sq_score -= w_gait_alts * 15.0
+        w_scores["Squatting"] = max(0.0, sq_score)
+
+        # Jumping
+        jp_score = 0.0
+        if w_flight > 0.045:
+            jp_score += min(55.0, (w_flight / 0.15) * 55.0)
+        if w_hip_rom > 0.12 and (w_up_v > 0.5 or w_down_v > 0.5):
+            jp_score += min(30.0, (w_hip_rom / 0.25) * 30.0)
+        if w_k_corr > 0.40:
+            jp_score += 15.0
+        if w_gait_alts <= 2:
+            jp_score += 10.0
+        else:
+            jp_score -= w_gait_alts * 12.0
+        w_scores["Jumping"] = max(0.0, jp_score)
+
+        # Throwing
+        th_score = 0.0
+        if w_el_rom > 75.0:
+            th_score += min(45.0, (w_el_rom / 150.0) * 45.0)
+        if w_p_vw > 1.6:
+            th_score += min(40.0, (w_p_vw / 3.5) * 40.0)
+        if w_min_k < 105.0 and w_rom_k > 50.0 and w_flight < 0.04 and w_gait_alts <= 1:
+            th_score -= 50.0
+        if w_gait_alts > 4:
+            th_score -= 25.0
+        w_scores["Throwing"] = max(0.0, th_score)
+
+        # Sprinting
+        sp_score = 0.0
+        if w_gait_alts >= 2:
+            sp_score += min(55.0, (w_gait_alts / 5.0) * 55.0)
+        if w_p_va > 1.6:
+            sp_score += min(30.0, (w_p_va / 4.0) * 30.0)
+        if w_stride > 0.10:
+            sp_score += min(20.0, (w_stride / 0.25) * 20.0)
+        if w_gait_alts <= 1:
+            sp_score = 0.0
+        w_scores["Sprinting"] = max(0.0, sp_score)
+
+        # Cutting & Drills
+        w_scores["Cutting Movements"] = max(0.0, (w_lat_accel / 40.0) * 40.0 + (w_lat_rev / 2.0) * 30.0) if w_lat_rev >= 1 and w_lat_accel > 15.0 else 0.0
+        w_scores["Sports Specific Drills"] = max(0.0, (w_lat_rev / 4.0) * 45.0 + (w_lat_accel / 30.0) * 35.0) if w_lat_rev >= 2 else 0.0
+
+        best_class = max(w_scores, key=w_scores.get)
+        best_score = w_scores[best_class]
+
+        if best_score < 25.0:
+            best_class = "Athletic Movement"
+            best_conf = 0.60
+        else:
+            best_conf = round(min(0.99, max(0.60, best_score / 100.0)), 2)
+
+        rgb_score = round(min(0.98, max(0.50, (rgb_energy / 12.0) * 0.4 + best_conf * 0.6)), 2)
+        pose_score = best_conf
 
         window_results.append({
             "start_sec": start_sec,
             "end_sec": end_sec,
             "activity": best_class,
             "confidence": best_conf,
-            "rgb_score": round(rgb_scores.get(best_class, 0.5), 3),
-            "pose_score": round(pose_scores.get(best_class, 0.5), 3)
+            "rgb_score": rgb_score,
+            "pose_score": pose_score
         })
 
     # Temporal Aggregation into contiguous localized segments
@@ -640,9 +756,10 @@ def temporal_action_recognition_and_localization(
     act_durations = {}
     for seg in localized_segments:
         act = seg["activity"]
-        act_durations[act] = act_durations.get(act, 0.0) + seg["duration_seconds"] * seg["confidence"]
+        if act != "Athletic Movement":
+            act_durations[act] = act_durations.get(act, 0.0) + seg["duration_seconds"] * seg["confidence"]
 
-    primary = max(act_durations, key=act_durations.get) if act_durations else "Sprinting"
+    primary = max(act_durations, key=act_durations.get) if act_durations else (localized_segments[0]["activity"] if localized_segments else "Athletic Movement")
     primary_conf = round(float(np.mean([s["confidence"] for s in localized_segments if s["activity"] == primary])), 3) if localized_segments else 0.90
 
     return {
@@ -798,6 +915,10 @@ def process_video_with_mediapipe(
     wrist_y_positions_r = []
     wrist_x_positions_l = []
     wrist_x_positions_r = []
+    shoulder_y_positions_l = []
+    shoulder_y_positions_r = []
+    shoulder_x_positions_l = []
+    shoulder_x_positions_r = []
     trajectory_points = []
     person_detected_frames = 0
     athletic_pose_frames = 0
@@ -918,6 +1039,13 @@ def process_video_with_mediapipe(
                         p_dy = abs(kpts[12][1] - kpts[11][1])
                         pelvic_tilt_deg = abs(float(np.degrees(np.arctan2(p_dy, max(1e-4, p_dx)))))
                         pelvic_tilts.append(pelvic_tilt_deg)
+
+                    if kpts[5][2] > 0.3:
+                        shoulder_x_positions_l.append(float(kpts[5][0]))
+                        shoulder_y_positions_l.append(float(kpts[5][1]))
+                    if kpts[6][2] > 0.3:
+                        shoulder_x_positions_r.append(float(kpts[6][0]))
+                        shoulder_y_positions_r.append(float(kpts[6][1]))
 
                     # Shoulder tilt (degrees from horizontal plane)
                     if kpts[5][2] > 0.3 and kpts[6][2] > 0.3:
@@ -1143,6 +1271,10 @@ def process_video_with_mediapipe(
         elbow_angles_r=elbow_angles_r,
         trunk_leans=trunk_leans,
         head_tilts=head_tilts,
+        shoulder_x_l=shoulder_x_positions_l,
+        shoulder_y_l=shoulder_y_positions_l,
+        shoulder_x_r=shoulder_x_positions_r,
+        shoulder_y_r=shoulder_y_positions_r,
         fps=effective_fps
     )
     # 7b. Dual-Branch Temporal Action Recognition & Overlapping Sliding Window Localizer
@@ -1172,7 +1304,11 @@ def process_video_with_mediapipe(
         elbow_angles_l=elbow_angles_l,
         elbow_angles_r=elbow_angles_r,
         trunk_leans=trunk_leans,
-        head_tilts=head_tilts
+        head_tilts=head_tilts,
+        shoulder_x_l=shoulder_x_positions_l,
+        shoulder_y_l=shoulder_y_positions_l,
+        shoulder_x_r=shoulder_x_positions_r,
+        shoulder_y_r=shoulder_y_positions_r
     )
 
     detected_activity = actions_result["primary_action"]
