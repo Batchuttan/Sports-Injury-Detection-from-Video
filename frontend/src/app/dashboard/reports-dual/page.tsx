@@ -274,9 +274,43 @@ export default function DualReportsArchivePage() {
     }
   };
 
+  const handleDeleteSingle = async (id: number) => {
+    const confirmDelete = window.confirm(
+      "Are you sure you want to permanently delete this dual comparison report? This action cannot be undone."
+    );
+    if (!confirmDelete) return;
+
+    try {
+      setDeleting(true);
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      const res = await deleteDualComparisons(token, [id]);
+      setDeleteMessage(res.message || "Dual comparison report deleted successfully.");
+      if (selectedComp && selectedComp.id === id) {
+        setSelectedComp(null);
+      }
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      await fetchDualReports();
+      setTimeout(() => setDeleteMessage(""), 4000);
+    } catch (err: any) {
+      alert("Failed to delete dual comparison report: " + err.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const filteredComparisons = comparisons.filter((c) => {
     const actA = (c.video_a_activity || "").toLowerCase();
     const actB = (c.video_b_activity || "").toLowerCase();
+    const nonSportsKeywords = ["non-sports", "no person", "no athletic", "no sport"];
+    if (nonSportsKeywords.some((k) => actA.includes(k) || actB.includes(k))) {
+      return false;
+    }
     const verdict = (c.overall_verdict || "").toLowerCase();
     const summary = (c.summary || "").toLowerCase();
     const search = searchTerm.toLowerCase();
@@ -507,8 +541,8 @@ export default function DualReportsArchivePage() {
                   </div>
                 </div>
 
-                {/* Card Action Button: Prominent VIEW Button */}
-                <div className="pt-3 border-t border-slate-800/80">
+                {/* Card Action Button: Prominent VIEW Button & Independent Delete */}
+                <div className="pt-3 border-t border-slate-800/80 flex items-center gap-2">
                   <button
                     type="button"
                     onClick={(e) => {
@@ -516,10 +550,21 @@ export default function DualReportsArchivePage() {
                       handleViewComparison(comp);
                     }}
                     disabled={loadingModalId === comp.id}
-                    className="w-full py-2.5 px-4 bg-gradient-to-r from-indigo-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-bold text-xs rounded-xl shadow-[0_0_15px_rgba(236,72,153,0.3)] transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    className="flex-1 py-2.5 px-4 bg-gradient-to-r from-indigo-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-bold text-xs rounded-xl shadow-[0_0_15px_rgba(236,72,153,0.3)] transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <Eye className="w-4 h-4 shrink-0" />
                     <span>{loadingModalId === comp.id ? "Loading Telemetry..." : "VIEW FULL COMPARISON & TELEMETRY"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteSingle(comp.id);
+                    }}
+                    className="p-2.5 bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 hover:text-rose-200 rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0 group/del"
+                    title="Delete this dual comparison report"
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-400 group-hover/del:text-rose-200 transition-colors" />
                   </button>
                 </div>
               </div>
@@ -594,8 +639,14 @@ export default function DualReportsArchivePage() {
 
       {/* EXPANDABLE FULL COMPARISON MODAL */}
       {selectedComp && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto animate-fadeIn">
-          <div className="bg-slate-900 border border-slate-700/80 rounded-3xl max-w-5xl w-full max-h-[92vh] overflow-y-auto shadow-2xl p-6 sm:p-8 space-y-6 text-slate-200">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto animate-fadeIn"
+          onClick={() => setSelectedComp(null)}
+        >
+          <div
+            className="bg-slate-900 border border-slate-700/80 rounded-3xl max-w-5xl w-full max-h-[92vh] overflow-y-auto shadow-2xl p-6 sm:p-8 space-y-6 text-slate-200"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Modal Top Header with PDF/CSV options & close button */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
               <div>
@@ -1205,12 +1256,22 @@ export default function DualReportsArchivePage() {
               </Link>
             </div>
 
-            {/* Modal Bottom Footer */}
-            <div className="pt-4 border-t border-slate-800 flex items-center justify-end gap-3">
+            {/* Modal Bottom Footer with Independent Delete Option */}
+            <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => handleDeleteSingle(selectedComp.id)}
+                disabled={deleting}
+                className="w-full sm:w-auto px-4 py-2.5 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/50 hover:border-rose-400 text-rose-300 hover:text-white rounded-xl text-xs font-bold transition-all shadow-[0_0_15px_rgba(244,63,94,0.2)] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                <Trash2 className="w-4 h-4 text-rose-400" />
+                <span>{deleting ? "Deleting Comparison..." : "Delete This Comparison"}</span>
+              </button>
+
               <button
                 type="button"
                 onClick={() => setSelectedComp(null)}
-                className="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl transition-colors cursor-pointer"
+                className="w-full sm:w-auto px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl transition-colors cursor-pointer"
               >
                 Close Report
               </button>

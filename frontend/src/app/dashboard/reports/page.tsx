@@ -187,6 +187,36 @@ export default function ReportsArchivePage() {
     }
   };
 
+  const handleDeleteSingle = async (id: number) => {
+    const confirmDelete = window.confirm(
+      "Are you sure you want to permanently delete this report? This action cannot be undone."
+    );
+    if (!confirmDelete) return;
+
+    try {
+      setDeleting(true);
+      const token = localStorage.getItem("token");
+      if (!token) return;
+
+      const res = await deleteAnalyses(token, [id]);
+      setDeleteMessage(res.message || "Report deleted successfully.");
+      if (selectedAnalysis && selectedAnalysis.id === id) {
+        setSelectedAnalysis(null);
+      }
+      setSelectedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      await fetchReports();
+      setTimeout(() => setDeleteMessage(""), 4000);
+    } catch (err: any) {
+      alert("Failed to delete report: " + err.message);
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const parseKinematics = (kin: any) => {
     if (!kin) return null;
     if (typeof kin === "string") {
@@ -222,8 +252,12 @@ export default function ReportsArchivePage() {
   };
 
   const filteredAnalyses = analyses.filter((a) => {
+    const act = (a.activity || "").toLowerCase();
+    const nonSports = ["non-sports", "no person", "no athletic", "no sport"];
+    if (nonSports.some((k) => act.includes(k))) return false;
+
     const matchesSearch =
-      (a.activity || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      act.includes(searchTerm.toLowerCase()) ||
       (a.created_at || "").toLowerCase().includes(searchTerm.toLowerCase());
     const matchesRisk =
       filterRisk === "All"
@@ -449,8 +483,8 @@ export default function ReportsArchivePage() {
                   </div>
                 </div>
 
-                {/* Card Action Buttons: Prominent VIEW Button */}
-                <div className="pt-3 border-t border-slate-800/80">
+                {/* Card Action Buttons: Prominent VIEW Button & Independent Delete */}
+                <div className="pt-3 border-t border-slate-800/80 flex items-center gap-2">
                   <button
                     type="button"
                     onClick={(e) => {
@@ -458,10 +492,21 @@ export default function ReportsArchivePage() {
                       handleViewReport(analysis);
                     }}
                     disabled={loadingModalId === analysis.id}
-                    className="w-full py-2.5 px-4 bg-gradient-to-r from-indigo-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-bold text-xs rounded-xl shadow-[0_0_15px_rgba(79,70,229,0.3)] transition-all flex items-center justify-center gap-2 cursor-pointer"
+                    className="flex-1 py-2.5 px-4 bg-gradient-to-r from-indigo-600 to-pink-600 hover:from-indigo-500 hover:to-pink-500 text-white font-bold text-xs rounded-xl shadow-[0_0_15px_rgba(79,70,229,0.3)] transition-all flex items-center justify-center gap-2 cursor-pointer"
                   >
                     <Eye className="w-4 h-4 shrink-0" />
                     <span>{loadingModalId === analysis.id ? "Loading Telemetry..." : "VIEW FULL DETAILS & TELEMETRY"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteSingle(analysis.id);
+                    }}
+                    className="p-2.5 bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 hover:text-rose-200 rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0 group/del"
+                    title="Delete this report"
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-400 group-hover/del:text-rose-200 transition-colors" />
                   </button>
                 </div>
               </div>
@@ -540,8 +585,14 @@ export default function ReportsArchivePage() {
         const probs = parseInjuryProbabilities(selectedAnalysis.injury_probabilities);
 
         return (
-          <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-fadeIn">
-            <div className="glass-panel w-full max-w-4xl max-h-[94vh] rounded-3xl border border-slate-700 p-6 sm:p-8 overflow-y-auto space-y-6 relative shadow-[0_0_60px_rgba(0,0,0,0.9)]">
+          <div
+            className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-fadeIn"
+            onClick={() => setSelectedAnalysis(null)}
+          >
+            <div
+              className="glass-panel w-full max-w-4xl max-h-[94vh] rounded-3xl border border-slate-700 p-6 sm:p-8 overflow-y-auto space-y-6 relative shadow-[0_0_60px_rgba(0,0,0,0.9)]"
+              onClick={(e) => e.stopPropagation()}
+            >
               {/* Modal Header with Top-Right Export PDF and Export CSV Buttons */}
               <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-slate-800">
                 <div>
@@ -821,6 +872,29 @@ export default function ReportsArchivePage() {
                 <p className="text-xs text-indigo-200/90 leading-relaxed">
                   {selectedAnalysis.corrective_recommendation || "Maintain progressive resistance and symmetry balance."}
                 </p>
+              </div>
+
+              {/* Modal Bottom Footer with Independent Delete Option */}
+              <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => handleDeleteSingle(selectedAnalysis.id)}
+                  disabled={deleting}
+                  className="w-full sm:w-auto px-4 py-2.5 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/50 hover:border-rose-400 text-rose-300 hover:text-white rounded-xl text-xs font-bold transition-all shadow-[0_0_15px_rgba(244,63,94,0.2)] flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <Trash2 className="w-4 h-4 text-rose-400" />
+                  <span>{deleting ? "Deleting Report..." : "Delete This Report"}</span>
+                </button>
+
+                <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAnalysis(null)}
+                    className="w-full sm:w-auto px-5 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  >
+                    Close Report
+                  </button>
+                </div>
               </div>
             </div>
           </div>

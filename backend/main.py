@@ -4946,17 +4946,21 @@ def get_athlete_comparisons(
 
 
 
-    if current_user.role == "Administrator":
+    query = db.query(models.DualVideoComparison)
+    if current_user.role != "Administrator":
+        query = query.filter(models.DualVideoComparison.user_id == current_user.id)
 
-        comps = db.query(models.DualVideoComparison).order_by(models.DualVideoComparison.created_at.desc()).all()
-
-    else:
-
-        comps = db.query(models.DualVideoComparison).filter(
-
-            models.DualVideoComparison.user_id == current_user.id
-
-        ).order_by(models.DualVideoComparison.created_at.desc()).all()
+    query = query.filter(
+        ~models.DualVideoComparison.video_a_activity.ilike("%non-sports%"),
+        ~models.DualVideoComparison.video_a_activity.ilike("%no sport%"),
+        ~models.DualVideoComparison.video_a_activity.ilike("%no person%"),
+        ~models.DualVideoComparison.video_a_activity.ilike("%no athletic%"),
+        ~models.DualVideoComparison.video_b_activity.ilike("%non-sports%"),
+        ~models.DualVideoComparison.video_b_activity.ilike("%no sport%"),
+        ~models.DualVideoComparison.video_b_activity.ilike("%no person%"),
+        ~models.DualVideoComparison.video_b_activity.ilike("%no athletic%"),
+    )
+    comps = query.order_by(models.DualVideoComparison.created_at.desc()).all()
 
 
 
@@ -4973,13 +4977,11 @@ def get_athlete_comparisons(
 
 
         analyses = db.query(models.VideoAnalysis).filter(
-
-
-
-            models.VideoAnalysis.user_id == current_user.id
-
-
-
+            models.VideoAnalysis.user_id == current_user.id,
+            ~models.VideoAnalysis.activity.ilike("%non-sports%"),
+            ~models.VideoAnalysis.activity.ilike("%no sport%"),
+            ~models.VideoAnalysis.activity.ilike("%no person%"),
+            ~models.VideoAnalysis.activity.ilike("%no athletic%"),
         ).order_by(models.VideoAnalysis.id.desc()).all()
 
 
@@ -6065,20 +6067,19 @@ def get_athlete_analyses(
 
 
     if current_user.role == "Administrator":
-
         query = db.query(models.VideoAnalysis)
-
     else:
-
         query = db.query(models.VideoAnalysis).filter(models.VideoAnalysis.user_id == current_user.id)
 
-
+    query = query.filter(
+        ~models.VideoAnalysis.activity.ilike("%non-sports%"),
+        ~models.VideoAnalysis.activity.ilike("%no sport%"),
+        ~models.VideoAnalysis.activity.ilike("%no person%"),
+        ~models.VideoAnalysis.activity.ilike("%no athletic%"),
+    )
 
     if overview_only:
-
         query = query.filter(models.VideoAnalysis.is_cleared_from_overview == 0)
-
-
 
     return query.order_by(models.VideoAnalysis.created_at.desc()).all()
 
