@@ -638,7 +638,18 @@ export default function DualReportsArchivePage() {
       </div>
 
       {/* EXPANDABLE FULL COMPARISON MODAL */}
-      {selectedComp && (
+      {selectedComp && (() => {
+        const isCompNonSports = Boolean(
+          [
+            selectedComp.video_a_activity,
+            selectedComp.video_b_activity
+          ].some(act => {
+            const s = String(act || "").toLowerCase();
+            return s.includes("non-sports") || s.includes("no athletic") || s.includes("no person") || s.includes("no sport");
+          })
+        );
+
+        return (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto animate-fadeIn"
           onClick={() => setSelectedComp(null)}
@@ -750,6 +761,7 @@ export default function DualReportsArchivePage() {
             )}
 
             {/* Executive Verdict Banner */}
+            {!isCompNonSports && (
             <div className="glass-panel p-5 rounded-2xl border border-slate-800 relative overflow-hidden bg-slate-950/60">
               <div
                 className={`absolute top-0 left-0 w-2 h-full ${selectedComp.score_diff < 0
@@ -797,6 +809,7 @@ export default function DualReportsArchivePage() {
                 </div>
               </div>
             </div>
+            )}
 
             {/* Synchronized Dual Video Players */}
             {(() => {
@@ -1001,6 +1014,8 @@ export default function DualReportsArchivePage() {
               );
             })()}
 
+            {!isCompNonSports ? (
+              <>
             {/* 4-Stat High Level Kinematic Diffs */}
             {selectedComp.metrics_diff && (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
@@ -1308,6 +1323,34 @@ export default function DualReportsArchivePage() {
                 <ArrowRight className="w-3.5 h-3.5" />
               </Link>
             </div>
+              </>
+            ) : (
+              <div className="glass-panel p-8 rounded-3xl border-2 border-amber-500/40 text-center space-y-5 bg-slate-950/80 shadow-[0_0_40px_rgba(245,158,11,0.2)]">
+                <div className="w-16 h-16 rounded-2xl bg-amber-500/15 border-2 border-amber-400/50 flex items-center justify-center mx-auto text-amber-400 shadow-md">
+                  <AlertTriangle className="w-8 h-8" />
+                </div>
+                <div className="space-y-1.5 max-w-xl mx-auto">
+                  <span className="text-[11px] font-black uppercase tracking-widest text-amber-400 block">
+                    Comparative Telemetry Disabled
+                  </span>
+                  <h4 className="text-xl sm:text-2xl font-black text-white">
+                    NON-SPORTS VIDEO DETECTED
+                  </h4>
+                  <p className="text-xs sm:text-sm text-slate-300 leading-relaxed">
+                    One of the recordings in this comparison was classified as non-sports footage without athletic movement. Kinematic angle deltas, progression reports, and 8-action matrices are disabled to prevent inaccurate data.
+                  </p>
+                </div>
+
+                <div className="p-4 rounded-2xl bg-amber-500/15 border border-amber-400/40 max-w-md mx-auto space-y-1">
+                  <div className="text-[11px] font-black uppercase tracking-widest text-amber-300">
+                    Recommendation
+                  </div>
+                  <div className="text-sm sm:text-base font-black text-white">
+                    👉 PLEASE ADD 2 VIDEOS OF THE SAME SPORTS ACTIVITY
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Modal Bottom Footer with Independent Delete Option */}
             <div className="pt-4 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -1331,7 +1374,8 @@ export default function DualReportsArchivePage() {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

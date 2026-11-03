@@ -1377,9 +1377,24 @@ def compare_two_video_analyses(result_a: dict, result_b: dict) -> dict:
             "Equilibrium Baseline: Movement metrics across Video 1 and Video 2 exhibit balanced kinetic characteristics with consistent movement mechanics."
         )
 
-    insights = improvements + deteriorations
-    if not insights:
-        insights = ["Kinetic parameters remained stable across both movement sets."]
+    is_a_non_sports = any(k in (act_a or "").lower() for k in ["non-sports", "no athletic", "no person", "no sport"])
+    is_b_non_sports = any(k in (act_b or "").lower() for k in ["non-sports", "no athletic", "no person", "no sport"])
+    has_non_sports_video = bool(is_a_non_sports or is_b_non_sports)
+
+    if has_non_sports_video:
+        improvements = []
+        deteriorations = []
+        neutral_observations = []
+        insights = ["Comparative biomechanical analysis is disabled because non-sports footage was detected. Please upload 2 videos of the same athletic discipline."]
+        summary = "Non-sports video detected. Biomechanical telemetry comparison is suppressed. Please upload 2 videos of the same sports activity."
+        overall_verdict = "Non-Sports Video Detected"
+        verdict_color = "amber"
+        action_transition_summary = "Non-sports video detected. No athletic kinetic transition available."
+        detailed_coaching_verdict = "Please upload 2 videos of the same athletic activity to receive comparative coaching feedback."
+    else:
+        insights = improvements + deteriorations
+        if not insights:
+            insights = ["Kinetic parameters remained stable across both movement sets."]
 
     return {
         "score_diff": score_diff,
@@ -1396,6 +1411,7 @@ def compare_two_video_analyses(result_a: dict, result_b: dict) -> dict:
         "identical_video_message": identical_video_message,
         "is_cross_activity": is_cross_activity,
         "cross_activity_message": cross_activity_message,
+        "has_non_sports_video": has_non_sports_video,
         "actions_comparison": actions_comparison,
         "kinematics_comparison": kinematics_comparison,
         "metrics_diff": {
