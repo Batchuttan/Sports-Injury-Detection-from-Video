@@ -142,6 +142,22 @@ function AthleteDashboard() {
     fetchOverviewData();
   }, []);
 
+  // Auto-dismiss all non-recommendation notifications after 7 seconds, keeping recommendation notifications permanent until dismissed
+  useEffect(() => {
+    if (notifications.length === 0) return;
+    const nonRecNotifs = notifications.filter(
+      (n) => !(n.message && n.message.toLowerCase().includes("recommendation"))
+    );
+    if (nonRecNotifs.length > 0) {
+      const timer = setTimeout(() => {
+        setNotifications((prev) =>
+          prev.filter((n) => n.message && n.message.toLowerCase().includes("recommendation"))
+        );
+      }, 7000);
+      return () => clearTimeout(timer);
+    }
+  }, [notifications]);
+
   const handleDismissNotification = async (notifId: number) => {
     // Remove immediately from UI
     setNotifications((prev) => prev.filter((n) => n.id !== notifId));

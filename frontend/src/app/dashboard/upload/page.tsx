@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import { uploadVideo, API_URL } from "@/lib/api";
 import { useAnalysis } from "@/context/AnalysisContext";
-import { RotateCcw } from "lucide-react";
+import { RotateCcw, X } from "lucide-react";
 import { playAudioCue } from "@/lib/audioCue";
 import {
   ArrowUpCircle,
@@ -81,9 +81,21 @@ export default function VideoUploadPage() {
   } = useAnalysis();
 
   const [localError, setLocalError] = useState("");
+
+
   const result = singleResult;
   const uploading = isAnalyzingSingle;
   const error = singleError || localError;
+
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => {
+        setLocalError("");
+        resetSingleError();
+      }, 7000);
+      return () => clearTimeout(timer);
+    }
+  }, [error, resetSingleError]);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isFeedPlaying, setIsFeedPlaying] = useState(true);
@@ -263,8 +275,20 @@ export default function VideoUploadPage() {
             </div>
 
             {error && (
-              <div className="p-4 rounded-xl bg-rose-500/20 border border-rose-500/50 text-rose-400 text-sm font-medium">
-                {error}
+              <div className="p-4 rounded-xl bg-rose-500/20 border border-rose-500/50 text-rose-400 text-sm font-medium flex items-center justify-between gap-3 animate-fadeIn">
+                <span>{error}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setLocalError("");
+                    resetSingleError();
+                  }}
+                  title="Discard alert"
+                  aria-label="Discard alert"
+                  className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/20 text-rose-300 hover:text-white flex items-center justify-center transition-all cursor-pointer border border-white/10 shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
             )}
 

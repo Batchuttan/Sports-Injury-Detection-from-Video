@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
+import { X } from "lucide-react";
 import Link from "next/link";
 import { getUserFromToken } from "@/lib/auth";
 import { requestPasswordChange, getUserSettings, updateUserSettings, uploadUserAvatar, uploadUserSound } from "@/lib/api";
@@ -50,7 +51,7 @@ export default function SettingsPage() {
       if (token) {
         await updateUserSettings(token, { sound_cue: cueId, sound_effects: true });
         setSaveSuccessMsg(`Sound cue set to "${cueId}"`);
-        setTimeout(() => setSaveSuccessMsg(""), 2500);
+        setTimeout(() => setSaveSuccessMsg(""), 7000);
       }
     } catch (e) {
       console.error(e);
@@ -90,7 +91,7 @@ export default function SettingsPage() {
 
         playAudioCue("custom", soundVolume, res.custom_sound_url);
         setSaveSuccessMsg("Custom audio cue uploaded & activated!");
-        setTimeout(() => setSaveSuccessMsg(""), 3500);
+        setTimeout(() => setSaveSuccessMsg(""), 7000);
       }
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to upload audio file");
@@ -156,7 +157,7 @@ export default function SettingsPage() {
       if (!token) return;
       await updateUserSettings(token, { [key]: nextVal });
       setSaveSuccessMsg("Preferences saved to backend successfully!");
-      setTimeout(() => setSaveSuccessMsg(""), 3000);
+      setTimeout(() => setSaveSuccessMsg(""), 7000);
     } catch (err) {
       console.error("Failed to save setting:", err);
     } finally {
@@ -179,7 +180,7 @@ export default function SettingsPage() {
         localStorage.setItem("user_avatar", res.profile_picture);
         window.dispatchEvent(new Event("avatar_updated"));
         setSaveSuccessMsg("Profile photo updated successfully!");
-        setTimeout(() => setSaveSuccessMsg(""), 3500);
+        setTimeout(() => setSaveSuccessMsg(""), 7000);
       }
     } catch (err: unknown) {
       alert(err instanceof Error ? err.message : "Failed to upload photo");
@@ -197,7 +198,7 @@ export default function SettingsPage() {
       localStorage.removeItem("user_avatar");
       window.dispatchEvent(new Event("avatar_updated"));
       setSaveSuccessMsg("Profile photo reset to default initials avatar.");
-      setTimeout(() => setSaveSuccessMsg(""), 3500);
+      setTimeout(() => setSaveSuccessMsg(""), 7000);
     } catch (err) {
       console.error(err);
     }
@@ -213,7 +214,9 @@ export default function SettingsPage() {
       if (!token) throw new Error("No authorization token found. Please log in again.");
 
       const res = await requestPasswordChange(token);
+      setPasswordChangeSuccess(res.message);
       setPasswordChangeSuccess(res.message || "A secure confirmation link was sent to your email!");
+      setTimeout(() => setPasswordChangeSuccess(""), 7000);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to initiate password change.";
       setPasswordChangeError(msg);
@@ -239,7 +242,18 @@ export default function SettingsPage() {
             </svg>
             <span>{saveSuccessMsg}</span>
           </div>
-          <span className="text-xs text-emerald-400 font-mono">Backend Synced</span>
+          <div className="flex items-center gap-2.5">
+            <span className="text-xs text-emerald-400 font-mono">Backend Synced</span>
+            <button
+              type="button"
+              onClick={() => setSaveSuccessMsg("")}
+              title="Discard notification"
+              aria-label="Discard notification"
+              className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition-all cursor-pointer border border-white/10 shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       )}
 
@@ -350,16 +364,27 @@ export default function SettingsPage() {
         )}
 
         {passwordChangeSuccess && (
-          <div className="p-5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-sm space-y-3">
-            <div className="flex items-center gap-2 font-semibold text-emerald-400">
-              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-              </svg>
-              Confirmation Email Dispatched!
+          <div className="p-5 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-300 text-sm flex items-start justify-between gap-3 animate-fadeIn">
+            <div className="space-y-3 flex-1">
+              <div className="flex items-center gap-2 font-semibold text-emerald-400">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                Confirmation Email Dispatched!
+              </div>
+              <p className="text-xs text-slate-300 leading-relaxed">
+                We have dispatched a verification email to <strong>{user?.email || "your registered address"}</strong> containing a secure link valid for 30 minutes. Click the link in your email to confirm and submit your new password.
+              </p>
             </div>
-            <p className="text-xs text-slate-300 leading-relaxed">
-              We have dispatched a verification email to <strong>{user?.email || "your registered address"}</strong> containing a secure link valid for 30 minutes. Click the link in your email to confirm and submit your new password.
-            </p>
+            <button
+              type="button"
+              onClick={() => setPasswordChangeSuccess("")}
+              title="Discard notification"
+              aria-label="Discard notification"
+              className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition-all cursor-pointer border border-white/10 shrink-0 mt-0.5"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         )}
 

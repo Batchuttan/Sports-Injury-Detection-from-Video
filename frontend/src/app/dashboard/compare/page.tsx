@@ -10,6 +10,7 @@ import { compareVideos, compareExistingAnalyses, getAnalyses, API_URL } from "@/
 import { useAnalysis } from "@/context/AnalysisContext";
 
 import { playAudioCue } from "@/lib/audioCue";
+import { X } from "lucide-react";
 
 import {
 
@@ -311,9 +312,21 @@ export default function ComparePage() {
   } = useAnalysis();
 
   const [localError, setLocalError] = useState("");
+
+
   const comparisonResult = dualResult as ComparisonResult | null;
   const processing = isComparingDual;
   const error = dualError || localError;
+
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => {
+        setLocalError("");
+        resetDualError();
+      }, 7000);
+      return () => clearTimeout(timer);
+    }
+  }, [error, resetDualError]);
 
 
 
@@ -775,10 +788,14 @@ export default function ComparePage() {
 
           <span>{error}</span>
 
-          <button onClick={() => { setLocalError(""); resetDualError(); }} className="text-rose-400 hover:text-white text-xs font-bold px-2">
-
-            Dismiss
-
+          <button
+            type="button"
+            onClick={() => { setLocalError(""); resetDualError(); }}
+            title="Discard alert"
+            aria-label="Discard alert"
+            className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/20 text-rose-300 hover:text-white flex items-center justify-center transition-all cursor-pointer border border-white/10 shrink-0"
+          >
+            <X className="w-4 h-4" />
           </button>
 
         </div>
