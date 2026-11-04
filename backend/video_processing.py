@@ -1225,7 +1225,7 @@ def process_video_with_mediapipe(
             "ffmpeg", "-y",
             "-i", temp_raw_path,
             "-vcodec", "libx264",
-            "-preset", "fast",
+            "-preset", "ultrafast",
             "-crf", "28",
             "-maxrate", "1800k",
             "-bufsize", "3600k",

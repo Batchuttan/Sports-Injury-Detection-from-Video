@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useRef } from "react";
-import { uploadVideo, compareVideos, compareExistingAnalyses } from "@/lib/api";
+import { uploadVideo, compareVideos, compareExistingAnalyses, API_URL } from "@/lib/api";
 import { playAudioCue } from "@/lib/audioCue";
 
 export interface ActiveNotification {
@@ -186,6 +186,20 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       if (singleTimerRef.current) clearInterval(singleTimerRef.current);
       setSingleProgress(100);
       setSingleStage("Analysis Complete!");
+
+      // Preload video into memory/cache immediately for instant zero-latency playback
+      if (typeof window !== "undefined" && res?.processed_url) {
+        try {
+          const fullUrl = res.processed_url.startsWith("http")
+            ? res.processed_url
+            : `${API_URL}${res.processed_url.startsWith("/") ? res.processed_url : `/${res.processed_url}`}`;
+          const pre = document.createElement("video");
+          pre.preload = "auto";
+          pre.muted = true;
+          pre.src = fullUrl;
+        } catch (_) {}
+      }
+
       setSingleResult(res);
 
       // Play completion chime

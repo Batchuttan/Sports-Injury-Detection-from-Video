@@ -105,11 +105,9 @@ export default function VideoUploadPage() {
       const v = videoRef.current;
       v.defaultMuted = true;
       v.muted = true;
-      v.load();
       const p = v.play();
       if (p !== undefined) {
-        p.then(() => setIsFeedPlaying(true)).catch((e) => {
-          console.warn("Autoplay blocked by browser policy:", e);
+        p.then(() => setIsFeedPlaying(true)).catch(() => {
           setIsFeedPlaying(false);
         });
       }
@@ -411,18 +409,10 @@ export default function VideoUploadPage() {
                   preload="auto"
                   onPlay={() => setIsFeedPlaying(true)}
                   onPause={() => setIsFeedPlaying(false)}
-                  onLoadedMetadata={() => {
-                    if (videoRef.current) {
-                      videoRef.current.defaultMuted = true;
-                      videoRef.current.muted = true;
-                      videoRef.current.play().then(() => setIsFeedPlaying(true)).catch(() => setIsFeedPlaying(false));
-                    }
-                  }}
                   className="w-full h-full object-contain transform-gpu"
                   style={{ transform: "translateZ(0)", willChange: "transform", backfaceVisibility: "hidden" }}
                   src={resolveVideoSrc(result.processed_url)}
                 >
-                  <source src={resolveVideoSrc(result.processed_url)} type="video/mp4" />
                   Your browser does not support HTML5 video playback.
                 </video>
                 <div className={`absolute top-3 left-3 px-2.5 py-1 bg-slate-950/85 rounded-lg border text-xs text-white flex items-center gap-2 ${result.analytics.anomaly_detected ? 'border-rose-500/50' : 'border-white/10'}`}>
