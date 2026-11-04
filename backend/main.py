@@ -261,65 +261,56 @@ os.makedirs("uploads/avatars", exist_ok=True)
 
 
 
-@app.get("/processed/{filename}")
+@app.options("/processed/{filename}")
+async def options_processed_video(filename: str):
+    from fastapi.responses import Response
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+            "Access-Control-Allow-Headers": "*",
+            "Access-Control-Expose-Headers": "Content-Range, Accept-Ranges, Content-Length",
+        }
+    )
 
-
-
+@app.api_route("/processed/{filename}", methods=["GET", "HEAD"])
 async def stream_processed_video(filename: str, request: Request):
+    clean_filename = os.path.basename(filename)
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    candidates = [
+        os.path.join(current_dir, "processed", clean_filename),
+        os.path.join("processed", clean_filename),
+        os.path.join(current_dir, "uploads", clean_filename),
+        os.path.join("uploads", clean_filename),
+    ]
+    filepath = None
+    for cand in candidates:
+        if os.path.exists(cand):
+            filepath = cand
+            break
 
-
-
-    filepath = os.path.join("processed", filename)
-
-
-
-    if not os.path.exists(filepath):
-
-
-
+    if not filepath:
         raise HTTPException(status_code=404, detail="Video file not found")
 
-
-
-    
-
-
-
     filesize = os.path.getsize(filepath)
-
-
-
     range_header = request.headers.get("range") or request.headers.get("Range")
 
-
-
-    
-
-
-
     base_headers = {
-
-
-
         "Accept-Ranges": "bytes",
-
-
-
         "Cache-Control": "public, max-age=31536000, immutable",
-
-
-
         "Content-Type": "video/mp4",
-
-
-
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+        "Access-Control-Allow-Headers": "*",
+        "Access-Control-Expose-Headers": "Content-Range, Accept-Ranges, Content-Length",
     }
 
-
-
-    
-
-
+    if request.method == "HEAD":
+        from fastapi.responses import Response
+        headers = dict(base_headers)
+        headers["Content-Length"] = str(filesize)
+        return Response(status_code=200, headers=headers, media_type="video/mp4")
 
     if range_header:
 

@@ -487,15 +487,13 @@ export default function ComparePage() {
 
 
   const resolveVideoSrc = (url?: string) => {
-
     if (!url) return "";
-
     if (url.startsWith("http://") || url.startsWith("https://")) return url;
-
-    const clean = url.startsWith("/") ? url : `/${url}`;
-
-    return `${API_URL}${clean}`;
-
+    let path = url.startsWith("/") ? url : `/${url}`;
+    if (!path.startsWith("/processed/") && !path.startsWith("/uploads/")) {
+      path = `/processed/${path.replace(/^\/+/, "")}`;
+    }
+    return `${API_URL}${path}`;
   };
 
 
@@ -1960,8 +1958,6 @@ export default function ComparePage() {
 
                           muted={isMuted}
 
-                          crossOrigin="anonymous"
-
                           disablePictureInPicture
 
                           onPlay={() => {
@@ -2079,8 +2075,6 @@ export default function ComparePage() {
                           preload="auto"
 
                           muted={isMuted}
-
-                          crossOrigin="anonymous"
 
                           disablePictureInPicture
 

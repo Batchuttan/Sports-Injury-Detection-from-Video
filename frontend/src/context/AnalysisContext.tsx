@@ -62,7 +62,8 @@ interface AnalysisContextType {
   showProgressBadge: boolean;
   setShowProgressBadge: (show: boolean) => void;
   activeNotification: ActiveNotification | null;
-  dismissNotification: () => void;
+  activeNotifications: ActiveNotification[];
+  dismissNotification: (id?: string) => void;
 }
 
 const AnalysisContext = createContext<AnalysisContextType | undefined>(undefined);
@@ -87,7 +88,8 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
   // Notification & Settings
   const [showProgressBadge, setShowProgressBadgeState] = useState(true);
-  const [activeNotification, setActiveNotification] = useState<ActiveNotification | null>(null);
+  const [activeNotifications, setActiveNotifications] = useState<ActiveNotification[]>([]);
+  const activeNotification = activeNotifications.length > 0 ? activeNotifications[activeNotifications.length - 1] : null;
 
   const singleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const dualTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -179,7 +181,7 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       triggerAudioChime();
 
       // Trigger Top Completion Pop-Up Notification with hyperlink
-      setActiveNotification({
+      const newSingleNotification: ActiveNotification = {
         id: `single-${Date.now()}`,
         type: "single",
         title: "Video Analysis Complete!",
@@ -187,7 +189,11 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         link: "/dashboard/upload",
         linkText: "Click here to view your single video analysis results →",
         timestamp: Date.now()
-      });
+      };
+      setActiveNotifications((prev) => [
+        ...prev.filter((n) => n.type !== "single"),
+        newSingleNotification
+      ]);
 
       return res;
     } catch (err: any) {
@@ -260,7 +266,7 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       triggerAudioChime();
 
-      setActiveNotification({
+      const newDualNotification: ActiveNotification = {
         id: `dual-${Date.now()}`,
         type: "dual",
         title: "Dual Video Comparison Complete!",
@@ -268,7 +274,11 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         link: "/dashboard/compare",
         linkText: "Click here to view your trial comparison results →",
         timestamp: Date.now()
-      });
+      };
+      setActiveNotifications((prev) => [
+        ...prev.filter((n) => n.type !== "dual"),
+        newDualNotification
+      ]);
 
       return res;
     } catch (err: any) {
@@ -324,7 +334,7 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
       triggerAudioChime();
 
-      setActiveNotification({
+      const newDualHistNotification: ActiveNotification = {
         id: `dual-hist-${Date.now()}`,
         type: "dual",
         title: "Trial Comparison Complete!",
@@ -332,7 +342,11 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         link: "/dashboard/compare",
         linkText: "Click here to view your trial comparison results →",
         timestamp: Date.now()
-      });
+      };
+      setActiveNotifications((prev) => [
+        ...prev.filter((n) => n.type !== "dual"),
+        newDualHistNotification
+      ]);
 
       return res;
     } catch (err: any) {
@@ -358,8 +372,12 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setDualError(null);
   };
 
-  const dismissNotification = () => {
-    setActiveNotification(null);
+  const dismissNotification = (id?: string) => {
+    if (!id) {
+      setActiveNotifications([]);
+    } else {
+      setActiveNotifications((prev) => prev.filter((n) => n.id !== id));
+    }
   };
 
   return (
@@ -390,6 +408,7 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         showProgressBadge,
         setShowProgressBadge,
         activeNotification,
+        activeNotifications,
         dismissNotification
       }}
     >
