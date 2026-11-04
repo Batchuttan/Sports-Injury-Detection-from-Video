@@ -14,6 +14,9 @@ export const metadata: Metadata = {
 
 import { GoogleOAuthProvider } from "@react-oauth/google";
 import SmoothScroll from "@/components/SmoothScroll";
+import { AnalysisProvider } from "@/context/AnalysisContext";
+import TopCompletionNotification from "@/components/TopCompletionNotification";
+import FloatingProgressBadge from "@/components/FloatingProgressBadge";
 
 export default function RootLayout({
   children,
@@ -27,9 +30,14 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} antialiased`}>
       <body className="min-h-screen bg-slate-950 text-slate-50 flex flex-col font-sans">
         <GoogleOAuthProvider clientId={clientId}>
-          <SmoothScroll>
-            {children}
-          </SmoothScroll>
+          <AnalysisProvider>
+            <SmoothScroll>
+              {children}
+            </SmoothScroll>
+            {/* Global Background Progress Notification Components */}
+            <TopCompletionNotification />
+            <FloatingProgressBadge />
+          </AnalysisProvider>
         </GoogleOAuthProvider>
       </body>
     </html>

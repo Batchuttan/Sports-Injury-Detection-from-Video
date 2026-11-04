@@ -16,6 +16,7 @@ class User(Base):
     sound_cue = Column(String, default="chime")
     custom_sound_url = Column(String, nullable=True)
     sound_volume = Column(Integer, default=80)
+    show_progress_badge = Column(Integer, default=1)
     
     athlete_profile = relationship("AthleteProfile", back_populates="user", uselist=False)
 

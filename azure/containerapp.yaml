@@ -44,3 +44,4 @@ properties:
           http:
             metadata:
               concurrentRequests: "50"
+

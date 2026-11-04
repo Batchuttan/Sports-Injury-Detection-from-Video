@@ -3,6 +3,8 @@
 import { useState, useRef } from "react";
 import Link from "next/link";
 import { uploadVideo, API_URL } from "@/lib/api";
+import { useAnalysis } from "@/context/AnalysisContext";
+import { RotateCcw } from "lucide-react";
 import { playAudioCue } from "@/lib/audioCue";
 import {
   ArrowUpCircle,
@@ -65,9 +67,23 @@ export default function VideoUploadPage() {
   const [footwear, setFootwear] = useState<string>("Unknown");
   const [rpe, setRpe] = useState<number>(5);
   const [sleepQuality, setSleepQuality] = useState<number>(5);
-  const [uploading, setUploading] = useState(false);
-  const [error, setError] = useState("");
-  const [result, setResult] = useState<any | null>(null);
+
+  const {
+    isAnalyzingSingle,
+    singleProgress,
+    singleStage,
+    singleFileName,
+    singleResult,
+    singleError,
+    startSingleAnalysis,
+    clearSingleResult,
+    resetSingleError
+  } = useAnalysis();
+
+  const [localError, setLocalError] = useState("");
+  const result = singleResult;
+  const uploading = isAnalyzingSingle;
+  const error = singleError || localError;
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [isFeedPlaying, setIsFeedPlaying] = useState(true);
@@ -92,44 +108,25 @@ export default function VideoUploadPage() {
   const handleUpload = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) {
-      setError("Please select a video file first.");
+      setLocalError("Please select a video file first.");
       return;
     }
 
-    setUploading(true);
-    setError("");
-    setResult(null);
+    setLocalError("");
+    resetSingleError();
 
     try {
       const token = localStorage.getItem("token");
       if (!token) throw new Error("No authorization token found. Please log in first.");
 
-      const targetActivity = activity.startsWith("Auto-Detect") ? "Auto-Detect" : activity;
-      const response = await uploadVideo(token, file, targetActivity, surfaceType, footwear, rpe, sleepQuality);
-      setResult(response);
-
-      // Play user's configured audio cue upon completing pose estimation rendering
-      try {
-        const soundPref = localStorage.getItem("sound_effects");
-        const isSoundOn = soundPref === null ? true : soundPref === "true";
-        if (isSoundOn) {
-          const soundCue = localStorage.getItem("sound_cue") || "chime";
-          const soundVolume = Number(localStorage.getItem("sound_volume") || 80);
-          const customUrl = localStorage.getItem("custom_sound_url") || undefined;
-          playAudioCue(soundCue, soundVolume, customUrl);
-        }
-      } catch (audioErr) {
-        console.warn("Video processing audio cue skipped:", audioErr);
-      }
+      await startSingleAnalysis(token, file, activity, surfaceType, footwear, rpe, sleepQuality);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "An error occurred during video upload and processing.";
       if (msg.includes("401") || msg.includes("credentials")) {
-        setError("Your session has expired. Please log in again to continue.");
+        setLocalError("Your session has expired. Please log in again to continue.");
       } else {
-        setError(msg);
+        setLocalError(msg);
       }
-    } finally {
-      setUploading(false);
     }
   };
 
@@ -291,11 +288,75 @@ export default function VideoUploadPage() {
 
         {/* Video Player & Primary Overview Panel */}
         <div className="glass-panel p-8 rounded-2xl flex flex-col">
-          <h3 className="text-lg font-bold text-white mb-6 border-b border-slate-800 pb-4">
-            Kinetic Analysis Feed
-          </h3>
+          <div className="flex items-center justify-between mb-6 border-b border-slate-800 pb-4">
+            <h3 className="text-lg font-bold text-white">
+              Kinetic Analysis Feed
+            </h3>
+            {result && (
+              <button
+                type="button"
+                onClick={() => {
+                  clearSingleResult();
+                  setFile(null);
+                  setLocalError("");
+                }}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Analyze Another Video</span>
+              </button>
+            )}
+          </div>
 
-          {result ? (
+          {uploading ? (
+            <div className="flex-1 flex flex-col items-center justify-center p-6 space-y-6 my-auto text-center">
+              <div className="flex items-center justify-between w-full max-w-md">
+                <div className="flex items-center gap-3">
+                  <div className="relative flex items-center justify-center w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/40 text-indigo-400">
+                    <Activity className="w-5 h-5 animate-pulse" />
+                  </div>
+                  <div className="text-left">
+                    <h4 className="font-bold text-white text-base">Kinetic Vision Analysis</h4>
+                    <p className="text-xs text-slate-400 truncate max-w-[200px]">
+                      {file?.name || singleFileName || "Video stream"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="text-2xl font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 via-sky-300 to-emerald-400 font-mono">
+                  {Math.round(singleProgress)}%
+                </div>
+              </div>
+
+              {/* Game-Download Style Percentage Bar */}
+              <div className="w-full max-w-md space-y-2">
+                <div className="w-full bg-slate-900 rounded-full h-4 overflow-hidden border border-slate-700/80 p-0.5 shadow-inner">
+                  <div
+                    className="h-full bg-gradient-to-r from-indigo-500 via-sky-400 to-emerald-400 rounded-full transition-all duration-300 ease-out relative overflow-hidden"
+                    style={{ width: `${Math.min(100, Math.max(5, singleProgress))}%` }}
+                  >
+                    <div className="absolute inset-0 bg-white/20 animate-pulse" />
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-xs text-slate-400 px-1">
+                  <span className="italic truncate pr-2">
+                    {singleStage || "Extracting frames and spatial keypoints..."}
+                  </span>
+                  <span className="font-semibold text-slate-500 shrink-0">
+                    {Math.round(singleProgress)}% complete
+                  </span>
+                </div>
+              </div>
+
+              <div className="w-full max-w-md p-3.5 rounded-xl bg-indigo-950/40 border border-indigo-500/25 text-xs text-indigo-200 flex items-start gap-2.5 text-left">
+                <Sparkles className="w-4 h-4 text-indigo-400 shrink-0 mt-0.5" />
+                <span className="leading-relaxed">
+                  <strong>Safe to switch tabs:</strong> Your analysis continues running in the background. Feel free to check Settings, Compare, or Dashboards. A notification banner with a direct link will pop up when finished!
+                </span>
+              </div>
+            </div>
+          ) : result ? (
             <div className="space-y-6 flex-1">
               <div className="aspect-video bg-slate-950 rounded-xl overflow-hidden border border-slate-700 relative flex flex-col justify-center">
                 <video

@@ -1691,10 +1691,12 @@ def get_user_settings(current_user: models.User = Depends(get_current_user)):
 
 
         "custom_sound_url": current_user.custom_sound_url or "",
+            "show_progress_badge": bool(getattr(current_user, "show_progress_badge", 1)),
 
 
 
-        "sound_volume": current_user.sound_volume if current_user.sound_volume is not None else 80
+        "sound_volume": current_user.sound_volume if current_user.sound_volume is not None else 80,
+        "show_progress_badge": bool(getattr(current_user, "show_progress_badge", 1) if getattr(current_user, "show_progress_badge", 1) is not None else 1)
 
 
 
@@ -1777,6 +1779,9 @@ def update_user_settings(
         current_user.sound_volume = max(0, min(100, int(settings_in.sound_volume)))
 
 
+
+    if settings_in.show_progress_badge is not None:
+        current_user.show_progress_badge = 1 if settings_in.show_progress_badge else 0
 
     if settings_in.profile_picture is not None:
 

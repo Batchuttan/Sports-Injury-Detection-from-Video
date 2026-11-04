@@ -18,3 +18,4 @@ run:
       value: "sports-injury-secret-key-prod-supersecure"
     - name: ACCESS_TOKEN_EXPIRE_MINUTES
       value: "1440"
+

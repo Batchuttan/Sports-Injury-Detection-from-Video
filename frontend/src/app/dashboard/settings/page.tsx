@@ -5,9 +5,11 @@ import Link from "next/link";
 import { getUserFromToken } from "@/lib/auth";
 import { requestPasswordChange, getUserSettings, updateUserSettings, uploadUserAvatar, uploadUserSound } from "@/lib/api";
 import { playAudioCue, PREDEFINED_SOUNDS } from "@/lib/audioCue";
+import { useAnalysis } from "@/context/AnalysisContext";
 
 export default function SettingsPage() {
   const [user, setUser] = useState<{ email: string; role: string } | null>(null);
+  const { showProgressBadge, setShowProgressBadge } = useAnalysis();
   const [profilePicture, setProfilePicture] = useState<string>("");
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
 
@@ -115,6 +117,9 @@ export default function SettingsPage() {
           if (data.sound_cue) setSoundCue(data.sound_cue);
           if (data.custom_sound_url) setCustomSoundUrl(data.custom_sound_url);
           if (data.sound_volume !== undefined && data.sound_volume !== null) setSoundVolume(data.sound_volume);
+          if (data.show_progress_badge !== undefined) {
+            setShowProgressBadge(Boolean(data.show_progress_badge));
+          }
           // Sync to localStorage for fast access by upload page
           localStorage.setItem("sound_effects", String(Boolean(data.sound_effects)));
           localStorage.setItem("sound_cue", data.sound_cue || "chime");
@@ -133,7 +138,8 @@ export default function SettingsPage() {
     loadSettings();
   }, []);
 
-  const handleToggle = async (key: "email_alerts" | "daily_wellness" | "sound_effects", nextVal: boolean) => {
+  const handleToggle = async (key: "email_alerts" | "daily_wellness" | "sound_effects" | "show_progress_badge", nextVal: boolean) => {
+    if (key === "show_progress_badge") setShowProgressBadge(nextVal);
     if (key === "email_alerts") setEmailAlerts(nextVal);
     if (key === "daily_wellness") setDailyWellness(nextVal);
     if (key === "sound_effects") {
@@ -443,6 +449,33 @@ export default function SettingsPage() {
               className={`w-14 h-7 rounded-full transition-colors relative cursor-pointer shrink-0 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 ${dailyWellness ? "bg-indigo-600" : "bg-slate-700"}`}
             >
               <div className={`w-5 h-5 bg-white rounded-full absolute top-1 transition-all ${dailyWellness ? "right-1" : "left-1"}`} />
+            </button>
+          </div>
+
+          {/* Background Floating Progress Widget */}
+          <div className="flex items-center justify-between p-4 rounded-xl bg-slate-900/40 border border-slate-800/60 hover:border-slate-700/60 transition-colors">
+            <div className="pr-4">
+              <div className="text-white font-medium text-sm flex items-center gap-2">
+                <span>Show Background Floating Progress Widget</span>
+                {showProgressBadge ? (
+                  <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">Active</span>
+                ) : (
+                  <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-500">Hidden</span>
+                )}
+              </div>
+              <div className="text-xs text-slate-400 mt-1">
+                Display persistent floating progress percentage badge at top-right while video analysis or dual comparison is running in background.
+              </div>
+              <div className="text-[11px] text-indigo-400/90 mt-1">
+                Note: The top completion alert banner and audio chime will still notify you every time an analysis finishes, even if this widget is hidden.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleToggle("show_progress_badge", !showProgressBadge)}
+              className={`w-14 h-7 rounded-full transition-colors relative cursor-pointer shrink-0 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 ${showProgressBadge ? "bg-indigo-600" : "bg-slate-700"}`}
+            >
+              <div className={`w-5 h-5 bg-white rounded-full absolute top-1 transition-all ${showProgressBadge ? "right-1" : "left-1"}`} />
             </button>
           </div>
 
