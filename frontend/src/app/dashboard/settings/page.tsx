@@ -17,7 +17,7 @@ export default function SettingsPage() {
   // Email Alerts & Preferences state with real backend sync
   const [emailAlerts, setEmailAlerts] = useState(true);
   const [dailyWellness, setDailyWellness] = useState(true);
-  const [soundEffects, setSoundEffects] = useState(false);
+  const [soundEffects, setSoundEffects] = useState(() => typeof window !== "undefined" ? localStorage.getItem("sound_effects") !== "false" : true);
   const [soundCue, setSoundCue] = useState<string>("chime");
   const [customSoundUrl, setCustomSoundUrl] = useState<string>("");
   const [soundVolume, setSoundVolume] = useState<number>(80);
@@ -114,7 +114,8 @@ export default function SettingsPage() {
         if (data) {
           setEmailAlerts(Boolean(data.email_alerts));
           setDailyWellness(Boolean(data.daily_wellness));
-          setSoundEffects(Boolean(data.sound_effects));
+          const isSoundOn = data.sound_effects !== undefined && data.sound_effects !== null ? Boolean(data.sound_effects) : true;
+          setSoundEffects(isSoundOn);
           if (data.sound_cue) setSoundCue(data.sound_cue);
           if (data.custom_sound_url) setCustomSoundUrl(data.custom_sound_url);
           if (data.sound_volume !== undefined && data.sound_volume !== null) setSoundVolume(data.sound_volume);
@@ -122,7 +123,7 @@ export default function SettingsPage() {
             setShowProgressBadge(Boolean(data.show_progress_badge));
           }
           // Sync to localStorage for fast access by upload page
-          localStorage.setItem("sound_effects", String(Boolean(data.sound_effects)));
+          localStorage.setItem("sound_effects", String(isSoundOn));
           localStorage.setItem("sound_cue", data.sound_cue || "chime");
           localStorage.setItem("custom_sound_url", data.custom_sound_url || "");
           localStorage.setItem("sound_volume", String(data.sound_volume !== undefined ? data.sound_volume : 80));

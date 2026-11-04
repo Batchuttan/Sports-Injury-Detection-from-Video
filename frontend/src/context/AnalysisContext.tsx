@@ -64,6 +64,10 @@ interface AnalysisContextType {
   activeNotification: ActiveNotification | null;
   activeNotifications: ActiveNotification[];
   dismissNotification: (id?: string) => void;
+  dismissedSingleProgress: boolean;
+  dismissedDualProgress: boolean;
+  dismissSingleProgressBadge: () => void;
+  dismissDualProgressBadge: () => void;
 }
 
 const AnalysisContext = createContext<AnalysisContextType | undefined>(undefined);
@@ -90,6 +94,12 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [showProgressBadge, setShowProgressBadgeState] = useState(true);
   const [activeNotifications, setActiveNotifications] = useState<ActiveNotification[]>([]);
   const activeNotification = activeNotifications.length > 0 ? activeNotifications[activeNotifications.length - 1] : null;
+
+  const [dismissedSingleProgress, setDismissedSingleProgress] = useState(false);
+  const [dismissedDualProgress, setDismissedDualProgress] = useState(false);
+
+  const dismissSingleProgressBadge = () => setDismissedSingleProgress(true);
+  const dismissDualProgressBadge = () => setDismissedDualProgress(true);
 
   const singleTimerRef = useRef<NodeJS.Timeout | null>(null);
   const dualTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -138,6 +148,7 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     sleepQuality: number
   ) => {
     setIsAnalyzingSingle(true);
+    setDismissedSingleProgress(false);
     setSingleProgress(5);
     setSingleStage("Initializing video upload & buffer allocation...");
     setSingleFileName(file.name);
@@ -226,6 +237,7 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     fileBName: string
   ) => {
     setIsComparingDual(true);
+    setDismissedDualProgress(false);
     setDualProgress(5);
     setDualStage("Uploading dual trial videos to comparison engine...");
     setDualFileAName(fileAName);
@@ -300,6 +312,7 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     nameB: string
   ) => {
     setIsComparingDual(true);
+    setDismissedDualProgress(false);
     setDualProgress(10);
     setDualStage("Loading historical kinematic datasets from vault...");
     setDualFileAName(nameA);
@@ -409,7 +422,11 @@ export const AnalysisProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         setShowProgressBadge,
         activeNotification,
         activeNotifications,
-        dismissNotification
+        dismissNotification,
+        dismissedSingleProgress,
+        dismissedDualProgress,
+        dismissSingleProgressBadge,
+        dismissDualProgressBadge
       }}
     >
       {children}

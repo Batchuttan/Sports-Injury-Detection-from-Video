@@ -18,7 +18,7 @@ class UserResponse(UserBase):
     show_progress_badge: Optional[bool] = None
     email_alerts: Optional[int] = 1
     daily_wellness: Optional[int] = 1
-    sound_effects: Optional[int] = 0
+    sound_effects: Optional[int] = 1
     sound_cue: Optional[str] = "chime"
     custom_sound_url: Optional[str] = None
     sound_volume: Optional[int] = 80

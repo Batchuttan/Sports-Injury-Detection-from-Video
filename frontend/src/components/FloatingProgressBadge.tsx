@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAnalysis } from "@/context/AnalysisContext";
@@ -13,6 +13,7 @@ interface ProgressBadgeItemProps {
   title: string;
   fileSubtitle: string;
   targetLink: string;
+  onDismiss: () => void;
 }
 
 function ProgressBadgeItem({
@@ -21,54 +22,18 @@ function ProgressBadgeItem({
   stage,
   title,
   fileSubtitle,
-  targetLink
+  targetLink,
+  onDismiss
 }: ProgressBadgeItemProps) {
   const pathname = usePathname();
-  const [isDismissed, setIsDismissed] = useState(false);
-  const [timeLeft, setTimeLeft] = useState(7);
-
   const roundedProgress = Math.round(progress);
   const isCurrentPage = pathname === targetLink;
   const isDual = type === "dual";
 
-  // When job starts or route changes, count down 7 seconds before vanishing
-  useEffect(() => {
-    setIsDismissed(false);
-    setTimeLeft(7);
-
-    const interval = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          setIsDismissed(true);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    const vanishTimer = setTimeout(() => {
-      setIsDismissed(true);
-    }, 7000);
-
-    return () => {
-      clearInterval(interval);
-      clearTimeout(vanishTimer);
-    };
-  }, [pathname]);
-
-  if (isDismissed) return null;
-
   return (
     <div className="relative overflow-hidden rounded-2xl bg-slate-900/95 backdrop-blur-xl border border-indigo-500/40 shadow-[0_15px_35px_-5px_rgba(79,70,229,0.35)] p-4 text-white animate-in fade-in slide-in-from-right-6 duration-300">
-      {/* Subtle top indicator bar with 7-second countdown */}
-      <div
-        className="absolute top-0 left-0 h-1 bg-gradient-to-r from-indigo-500 via-sky-400 to-emerald-400 transition-all ease-linear"
-        style={{
-          width: `${(timeLeft / 7) * 100}%`,
-          transitionDuration: "1000ms"
-        }}
-      />
+      {/* Permanent top accent ambient line */}
+      <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-indigo-500 via-sky-400 to-emerald-400" />
 
       {/* Header with Title and Cross Mark Discard Button */}
       <div className="flex items-center justify-between gap-2 mb-2">
@@ -78,7 +43,7 @@ function ProgressBadgeItem({
             <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-indigo-500" />
           </span>
           <span className="text-[11px] font-semibold uppercase tracking-wider text-indigo-300">
-            Background Processing ({timeLeft}s)
+            Background Processing
           </span>
         </div>
 
@@ -91,9 +56,9 @@ function ProgressBadgeItem({
           {/* Cross Mark Discard Button */}
           <button
             type="button"
-            onClick={() => setIsDismissed(true)}
-            title="Discard notification"
-            aria-label="Discard notification"
+            onClick={onDismiss}
+            title="Dismiss progress notification"
+            aria-label="Dismiss progress notification"
             className="w-7 h-7 rounded-lg bg-white/5 hover:bg-white/20 text-slate-300 hover:text-white flex items-center justify-center transition-all cursor-pointer border border-white/10 shrink-0"
           >
             <X className="w-3.5 h-3.5" />
@@ -150,21 +115,32 @@ export default function FloatingProgressBadge() {
     singleProgress,
     singleStage,
     singleFileName,
+    dismissedSingleProgress,
+    dismissSingleProgressBadge,
+
     isComparingDual,
     dualProgress,
     dualStage,
     dualFileAName,
     dualFileBName,
+    dismissedDualProgress,
+    dismissDualProgressBadge,
+
     showProgressBadge
   } = useAnalysis();
 
-  // If user disabled floating badge in settings or neither is active, do not render
-  if (!showProgressBadge || (!isAnalyzingSingle && !isComparingDual)) return null;
+  // If user disabled floating badge in settings or neither job is actively running
+  if (!showProgressBadge) return null;
+
+  const showSingle = isAnalyzingSingle && !dismissedSingleProgress;
+  const showDual = isComparingDual && !dismissedDualProgress;
+
+  if (!showSingle && !showDual) return null;
 
   return (
     <div className="fixed top-20 right-5 z-[9990] w-84 max-w-[calc(100vw-2.5rem)] flex flex-col gap-3 pointer-events-auto">
-      {/* If single video analysis is running */}
-      {isAnalyzingSingle && (
+      {/* If single video analysis is running and not dismissed */}
+      {showSingle && (
         <ProgressBadgeItem
           key="single-progress"
           type="single"
@@ -173,11 +149,12 @@ export default function FloatingProgressBadge() {
           title="Video Analysis"
           fileSubtitle={singleFileName || "Athletic Video"}
           targetLink="/dashboard/upload"
+          onDismiss={dismissSingleProgressBadge}
         />
       )}
 
-      {/* If dual video comparison is running */}
-      {isComparingDual && (
+      {/* If dual video comparison is running and not dismissed */}
+      {showDual && (
         <ProgressBadgeItem
           key="dual-progress"
           type="dual"
@@ -186,6 +163,7 @@ export default function FloatingProgressBadge() {
           title="Dual Video Comparison"
           fileSubtitle={`${dualFileAName || "Video 1"} vs ${dualFileBName || "Video 2"}`}
           targetLink="/dashboard/compare"
+          onDismiss={dismissDualProgressBadge}
         />
       )}
     </div>

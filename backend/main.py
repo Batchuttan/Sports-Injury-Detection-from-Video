@@ -1669,7 +1669,7 @@ def get_user_settings(current_user: models.User = Depends(get_current_user)):
 
 
 
-        "sound_effects": bool(current_user.sound_effects if current_user.sound_effects is not None else 0),
+        "sound_effects": bool(current_user.sound_effects if current_user.sound_effects is not None else 1),
 
 
 
@@ -1858,7 +1858,8 @@ def update_user_settings(
 
 
 
-            "sound_volume": current_user.sound_volume if current_user.sound_volume is not None else 80
+            "sound_volume": current_user.sound_volume if current_user.sound_volume is not None else 80,
+            "show_progress_badge": bool(getattr(current_user, "show_progress_badge", 1) if getattr(current_user, "show_progress_badge", 1) is not None else 1)
 
 
 

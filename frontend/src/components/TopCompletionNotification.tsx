@@ -10,32 +10,36 @@ interface TopNotificationCardProps {
   onDismiss: () => void;
 }
 
+const TOTAL_VANISH_SECONDS = 7;
+
 function TopNotificationCard({ notification, onDismiss }: TopNotificationCardProps) {
   const router = useRouter();
-  const [timeLeft, setTimeLeft] = useState(7);
+
+  // Compute remaining seconds based on persistent wall-clock timestamp
+  const calculateRemainingSeconds = () => {
+    const elapsedSeconds = (Date.now() - notification.timestamp) / 1000;
+    const remaining = Math.max(0, Math.ceil(TOTAL_VANISH_SECONDS - elapsedSeconds));
+    return remaining;
+  };
+
+  const [timeLeft, setTimeLeft] = useState(calculateRemainingSeconds);
 
   useEffect(() => {
-    setTimeLeft(7);
-    const interval = setInterval(() => {
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(interval);
-          onDismiss();
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    const tick = () => {
+      const remaining = calculateRemainingSeconds();
+      setTimeLeft(remaining);
+      if (remaining <= 0) {
+        onDismiss();
+      }
+    };
 
-    const autoVanishTimer = setTimeout(() => {
-      onDismiss();
-    }, 7000);
+    tick();
+    const interval = setInterval(tick, 250);
 
     return () => {
       clearInterval(interval);
-      clearTimeout(autoVanishTimer);
     };
-  }, [notification.id, onDismiss]);
+  }, [notification.timestamp, onDismiss]);
 
   const handleNavigate = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -44,6 +48,7 @@ function TopNotificationCard({ notification, onDismiss }: TopNotificationCardPro
   };
 
   const isDual = notification.type === "dual";
+  const progressRatio = Math.max(0, Math.min(1, timeLeft / TOTAL_VANISH_SECONDS));
 
   return (
     <div className="relative overflow-hidden rounded-2xl bg-slate-900/95 backdrop-blur-xl border border-emerald-500/50 shadow-[0_15px_40px_-10px_rgba(16,185,129,0.35)] p-4 sm:p-5 text-white animate-in fade-in slide-in-from-top-6 duration-300">
@@ -51,8 +56,8 @@ function TopNotificationCard({ notification, onDismiss }: TopNotificationCardPro
       <div
         className="absolute top-0 left-0 h-1 bg-gradient-to-r from-emerald-400 via-sky-400 to-indigo-500 transition-all ease-linear"
         style={{
-          width: `${(timeLeft / 7) * 100}%`,
-          transitionDuration: "1000ms"
+          width: `${progressRatio * 100}%`,
+          transitionDuration: "250ms"
         }}
       />
 
