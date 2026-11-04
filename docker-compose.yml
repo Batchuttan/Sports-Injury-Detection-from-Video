@@ -2,24 +2,58 @@ version: '3.8'
 
 services:
   backend:
+    container_name: sports-injury-backend
     build:
       context: ./backend
       dockerfile: Dockerfile
     ports:
       - "8000:8000"
+    environment:
+      - PORT=8000
+      - HOST=0.0.0.0
+      - DATABASE_URL=sqlite:///./sql_app.db
+      - SECRET_KEY=sports-injury-secret-key-prod-supersecure
+      - ALGORITHM=HS256
+      - ACCESS_TOKEN_EXPIRE_MINUTES=1440
     volumes:
       - ./backend/uploads:/app/uploads
       - ./backend/processed:/app/processed
+      - ./backend/sql_app.db:/app/sql_app.db
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/docs || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - sports-injury-net
 
   frontend:
+    container_name: sports-injury-frontend
     build:
       context: ./frontend
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
     environment:
+      - NODE_ENV=production
       - NEXT_PUBLIC_API_URL=http://localhost:8000
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
     depends_on:
-      - backend
+      backend:
+        condition: service_started
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/ || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - sports-injury-net
+
+networks:
+  sports-injury-net:
+    driver: bridge

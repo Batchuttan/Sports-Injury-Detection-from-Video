@@ -1,0 +1,46 @@
+apiVersion: 2023-05-01
+location: eastus
+name: sports-injury-platform-app
+properties:
+  environmentId: /subscriptions/{subscription-id}/resourceGroups/sports-injury-rg/providers/Microsoft.App/managedEnvironments/sports-injury-env
+  configuration:
+    ingress:
+      external: true
+      targetPort: 3000
+      transport: auto
+      allowInsecure: false
+    secrets:
+      - name: acr-password
+        value: "SecretACRTokenPlaceholder"
+      - name: jwt-secret
+        value: "sports-injury-secret-key-prod-supersecure"
+  template:
+    containers:
+      - name: sports-injury-frontend
+        image: sportsinjuryacr.azurecr.io/sports-injury-frontend:latest
+        resources:
+          cpu: 0.5
+          memory: 1.0Gi
+        env:
+          - name: NODE_ENV
+            value: production
+          - name: NEXT_PUBLIC_API_URL
+            value: "http://localhost:8000"
+      - name: sports-injury-backend
+        image: sportsinjuryacr.azurecr.io/sports-injury-backend:latest
+        resources:
+          cpu: 1.0
+          memory: 2.0Gi
+        env:
+          - name: DATABASE_URL
+            value: "sqlite:///./sql_app.db"
+          - name: SECRET_KEY
+            secretRef: jwt-secret
+    scale:
+      minReplicas: 1
+      maxReplicas: 5
+      rules:
+        - name: http-rule
+          http:
+            metadata:
+              concurrentRequests: "50"

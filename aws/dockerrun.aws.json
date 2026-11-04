@@ -1,0 +1,42 @@
+{
+  "AWSEBDockerrunVersion": 2,
+  "containerDefinitions": [
+    {
+      "name": "sports-injury-backend",
+      "image": "sports-injury-backend:latest",
+      "essential": true,
+      "memory": 1024,
+      "portMappings": [
+        {
+          "hostPort": 8000,
+          "containerPort": 8000
+        }
+      ],
+      "mountPoints": [
+        {
+          "sourceVolume": "awseb-backend-uploads",
+          "containerPath": "/app/uploads"
+        },
+        {
+          "sourceVolume": "awseb-backend-processed",
+          "containerPath": "/app/processed"
+        }
+      ]
+    },
+    {
+      "name": "sports-injury-frontend",
+      "image": "sports-injury-frontend:latest",
+      "essential": true,
+      "memory": 1024,
+      "portMappings": [
+        {
+          "hostPort": 80,
+          "containerPort": 3000
+        }
+      ],
+      "links": [
+        "sports-injury-backend"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+version: 1.0
+runtime: python310
+build:
+  commands:
+    build:
+      - apt-get update && apt-get install -y ffmpeg libgl1 libglib2.0-0
+      - pip install --upgrade pip
+      - pip install -r backend/requirements.txt
+run:
+  command: uvicorn backend.main:app --host 0.0.0.0 --port 8000
+  network:
+    port: 8000
+    env: APP_PORT
+  env:
+    - name: DATABASE_URL
+      value: "sqlite:///./sql_app.db"
+    - name: SECRET_KEY
+      value: "sports-injury-secret-key-prod-supersecure"
+    - name: ACCESS_TOKEN_EXPIRE_MINUTES
+      value: "1440"
