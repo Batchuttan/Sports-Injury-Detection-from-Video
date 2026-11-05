@@ -110,3 +110,69 @@ def predict_from_feature_sequence(seq_features: np.ndarray) -> Optional[Dict[str
         "performed_actions": performed_list,
         "breakdown": breakdown
     }
+
+def _calculate_angle(a, b, c):
+    a, b, c = np.array(a), np.array(b), np.array(c)
+    radians = np.arctan2(c[1]-b[1], c[0]-b[0]) - np.arctan2(a[1]-b[1], a[0]-b[0])
+    angle = np.abs(radians * 180.0 / np.pi)
+    if angle > 180.0:
+        angle = 360.0 - angle
+    return angle
+
+def predict_from_keypoints(keypoints_list: List[np.ndarray], target_h: float = 720.0, fps: float = 30.0) -> Optional[Dict[str, Any]]:
+    """
+    Direct prediction from a list of per-frame (17, 3) keypoint arrays.
+    Interpolates to 32 frames and computes the exact 95-dim kinematic features.
+    """
+    if not keypoints_list or len(keypoints_list) < 6:
+        return None
+
+    n_frames = 32
+    indices = np.linspace(0, len(keypoints_list) - 1, n_frames, dtype=int)
+    sampled_kpts = [keypoints_list[i] for i in indices]
+    
+    dt = 1.0 / max(1.0, float(fps))
+    norm_scale = max(10.0, float(target_h))
+    
+    features = []
+    prev_kpts = None
+    
+    for kpts in sampled_kpts:
+        kpts = np.asarray(kpts, dtype=np.float32)
+        if kpts.shape != (17, 3):
+            kpts = np.zeros((17, 3), dtype=np.float32)
+            
+        xy_norm = kpts[:, :2] / norm_scale
+        conf = kpts[:, 2:3]
+        
+        if prev_kpts is not None:
+            vel = (xy_norm - (prev_kpts[:, :2] / norm_scale)) / dt
+        else:
+            vel = np.zeros_like(xy_norm)
+        prev_kpts = kpts
+        
+        ang_lk = _calculate_angle(kpts[11][:2], kpts[13][:2], kpts[15][:2]) / 180.0
+        ang_rk = _calculate_angle(kpts[12][:2], kpts[14][:2], kpts[16][:2]) / 180.0
+        ang_lh = _calculate_angle(kpts[5][:2], kpts[11][:2], kpts[13][:2]) / 180.0
+        ang_rh = _calculate_angle(kpts[6][:2], kpts[12][:2], kpts[14][:2]) / 180.0
+        ang_le = _calculate_angle(kpts[5][:2], kpts[7][:2], kpts[9][:2]) / 180.0
+        ang_re = _calculate_angle(kpts[6][:2], kpts[8][:2], kpts[10][:2]) / 180.0
+        
+        mid_sh = (kpts[5][:2] + kpts[6][:2]) / 2.0
+        mid_hp = (kpts[11][:2] + kpts[12][:2]) / 2.0
+        trunk_lean = abs(float(np.degrees(np.arctan2(abs(mid_sh[0] - mid_hp[0]), max(1e-4, abs(mid_hp[1] - mid_sh[1])))))) / 90.0
+        
+        ank_h_l = (norm_scale - kpts[15][1]) / norm_scale
+        ank_h_r = (norm_scale - kpts[16][1]) / norm_scale
+        flight_clearance = min(max(0.0, ank_h_l), max(0.0, ank_h_r))
+        gait_spread = abs(kpts[15][0] - kpts[16][0]) / norm_scale
+        hip_vert_v = float(vel[11, 1] + vel[12, 1]) / 2.0
+        
+        angles = np.array([ang_lk, ang_rk, ang_lh, ang_rh, ang_le, ang_re, trunk_lean], dtype=np.float32)
+        kinetics = np.array([flight_clearance, gait_spread, hip_vert_v], dtype=np.float32)
+        
+        frame_feat = np.concatenate([xy_norm.flatten(), conf.flatten(), vel.flatten(), angles, kinetics])
+        features.append(frame_feat)
+        
+    feat_matrix = np.array(features, dtype=np.float32)
+    return predict_from_feature_sequence(feat_matrix)

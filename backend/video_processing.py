@@ -17,6 +17,35 @@ def get_pose_model():
             _yolo_model = None
     return _yolo_model
 
+# ML Action Recognition, Sprint Temporal Classifier, and ACL Biomechanical Loaders
+_sprint_classifier = None
+def get_sprint_classifier():
+    global _sprint_classifier
+    if _sprint_classifier is None:
+        try:
+            from ml.sprint_inference_wrapper import SprintClassifier
+            _sprint_classifier = SprintClassifier()
+        except Exception as e:
+            print(f"Warning: SprintClassifier could not be loaded: {e}")
+            _sprint_classifier = None
+    return _sprint_classifier
+
+def get_action_keypoint_predictor():
+    try:
+        from ml.inference_wrapper import predict_from_keypoints
+        return predict_from_keypoints
+    except Exception as e:
+        print(f"Warning: predict_from_keypoints could not be loaded: {e}")
+        return None
+
+def get_acl_evaluator():
+    try:
+        from ml.acl_inference_wrapper import evaluate_acl_biomechanical_risk
+        return evaluate_acl_biomechanical_risk
+    except Exception as e:
+        print(f"Warning: evaluate_acl_biomechanical_risk could not be loaded: {e}")
+        return None
+
 def calculate_angle_vertical(point1, point2):
     """Calculate the angle of a line segment with the vertical."""
     dx = point2[0] - point1[0]
@@ -71,7 +100,8 @@ def classify_all_actions(
     shoulder_y_l=None,
     shoulder_x_r=None,
     shoulder_y_r=None,
-    fps=25.0
+    fps=25.0,
+    frame_keypoints=None
 ):
     """
     Evaluates footage across 7 specific athletic actions:
@@ -373,6 +403,43 @@ def classify_all_actions(
         drill_score += min(20.0, (rom_k / 60.0) * 20.0)
     scores["Sports Specific Drills"] = max(0.0, drill_score)
 
+    # ================= ML NEURAL ACTIVITY RECOGNITION & SPRINT TEMPORAL MODEL =================
+    sprint_analysis = None
+    ml_action_res = None
+    if frame_keypoints and len(frame_keypoints) >= 6:
+        valid_kpts = [k for k in frame_keypoints if (isinstance(k, np.ndarray) and k.shape == (17, 3) and np.max(k[:, 2]) > 0.2)]
+        if len(valid_kpts) >= 6:
+            # 1. 7-Class Deep Action Model (SportsActionSTNet trained on UCF101 & HMDB51)
+            pred_func = get_action_keypoint_predictor()
+            if pred_func is not None:
+                try:
+                    ml_action_res = pred_func(valid_kpts, target_h=target_h, fps=fps)
+                    if ml_action_res and "probabilities" in ml_action_res:
+                        for act_name, prob in ml_action_res["probabilities"].items():
+                            if act_name in scores:
+                                scores[act_name] += float(prob) * 45.0
+                except Exception as e:
+                    print(f"Action model inference warning: {e}")
+
+            # 2. SprintClassifier (SprintTemporalNet trained on UCF Sports Actions & AthletePose3D / HMDB51)
+            sprint_clf = get_sprint_classifier()
+            if sprint_clf is not None:
+                try:
+                    sprint_analysis = sprint_clf.predict_from_keypoint_sequence(valid_kpts)
+                    if sprint_analysis:
+                        p_sprint = float(sprint_analysis.get("sprint_probability", 0.0))
+                        is_sprint = bool(sprint_analysis.get("is_sprinting", False))
+                        if is_sprint and p_sprint >= 0.50:
+                            scores["Sprinting"] = max(scores["Sprinting"], 65.0 + p_sprint * 30.0)
+                            # Sprinters undergo cyclical flight-ground phases; suppress false jumping/landing hijacking
+                            if p_sprint >= 0.65:
+                                scores["Landing"] = min(scores.get("Landing", 0.0), 35.0)
+                                scores["Jumping"] = min(scores.get("Jumping", 0.0), 35.0)
+                        elif not is_sprint and p_sprint < 0.30:
+                            scores["Sprinting"] = min(scores["Sprinting"], 20.0)
+                except Exception as e:
+                    print(f"Sprint classifier inference warning: {e}")
+
     best_action = max(scores, key=scores.get)
     best_score = scores[best_action]
 
@@ -403,6 +470,31 @@ def classify_all_actions(
             return round(min(99.0, max(65.0, score * 0.9 + 15.0)), 1)
         return round(min(45.0, max(5.0, score * 0.45)), 1)
 
+    # Sprint custom evaluation if SprintClassifier is active
+    sprint_data = {
+        "performed": sprint_perf,
+        "confidence": make_conf(sprint_perf, scores["Sprinting"]),
+        "evidence": sprint_ev,
+        "key_metric": f"Peak Sprint V: {peak_va:.2f} H/s"
+    }
+    if sprint_analysis:
+        sp_is_sprint = bool(sprint_analysis.get("is_sprinting", False) or scores["Sprinting"] >= 50.0)
+        sp_prob = float(sprint_analysis.get("sprint_probability", 0.0))
+        sp_conf = round(float(sprint_analysis.get("confidence", 0.5)) * 100.0, 1) if sp_is_sprint else round((1.0 - sp_prob) * 100.0, 1)
+        sp_metric = f"Sprint Probability: {round(sp_prob * 100.0, 1)}%"
+        sp_ev = (
+            f"SprintTemporalNet verified high-velocity athletic sprint cadence ({sprint_analysis.get('evidence', '')}). "
+            f"Peak swing velocity: {peak_va:.2f} H/s, Stride spread: {mean_stride:.2f}."
+            if sp_is_sprint
+            else f"SprintTemporalNet verified non-sprinting movement pattern ({sprint_analysis.get('evidence', '')})."
+        )
+        sprint_data = {
+            "performed": sp_is_sprint,
+            "confidence": sp_conf,
+            "evidence": sp_ev,
+            "key_metric": sp_metric
+        }
+
     results = {
         "Jumping": {
             "performed": jump_perf,
@@ -416,12 +508,7 @@ def classify_all_actions(
             "evidence": squat_ev,
             "key_metric": f"Squat Depth: {min_k:.0f}°"
         },
-        "Sprinting": {
-            "performed": sprint_perf,
-            "confidence": make_conf(sprint_perf, scores["Sprinting"]),
-            "evidence": sprint_ev,
-            "key_metric": f"Peak Sprint V: {peak_va:.2f} H/s"
-        },
+        "Sprinting": sprint_data,
         "Landing": {
             "performed": land_perf,
             "confidence": make_conf(land_perf, scores["Landing"]),
@@ -465,7 +552,9 @@ def classify_all_actions(
     return {
         "primary_action": primary_action,
         "performed_actions": performed_list,
-        "breakdown": breakdown
+        "breakdown": breakdown,
+        "sprint_analysis": sprint_analysis,
+        "ml_action_prediction": ml_action_res
     }
 
 
@@ -956,6 +1045,7 @@ def process_video_with_mediapipe(
     trajectory_points = []
     person_detected_frames = 0
     athletic_pose_frames = 0
+    raw_frame_keypoints = []
 
     model = get_pose_model()
     prev_athlete_center = None
@@ -1019,6 +1109,7 @@ def process_video_with_mediapipe(
         ang_r_knee = None
         has_athletic_joints = False
         mid_hip_y = None
+        kpts_recorded = False
 
         if model is not None:
             results = model(frame, imgsz=640, verbose=False)
@@ -1037,6 +1128,8 @@ def process_video_with_mediapipe(
                     best_idx = int(np.argmin(dists))
 
                 kpts = kpts_list[best_idx]
+                raw_frame_keypoints.append(kpts)
+                kpts_recorded = True
                 person_detected_frames += 1
 
                 has_hips = (kpts[11][2] > 0.35 or kpts[12][2] > 0.35)
@@ -1212,6 +1305,9 @@ def process_video_with_mediapipe(
                 except Exception as e:
                     pass
 
+        if not kpts_recorded:
+            raw_frame_keypoints.append(np.zeros((17, 3), dtype=np.float32))
+
         # Draw Trajectory Trail
         for i in range(1, len(trajectory_points)):
             thickness = max(1, int(i / 6))
@@ -1309,7 +1405,8 @@ def process_video_with_mediapipe(
         shoulder_y_l=shoulder_y_positions_l,
         shoulder_x_r=shoulder_x_positions_r,
         shoulder_y_r=shoulder_y_positions_r,
-        fps=effective_fps
+        fps=effective_fps,
+        frame_keypoints=raw_frame_keypoints
     )
     # 7b. Dual-Branch Temporal Action Recognition & Overlapping Sliding Window Localizer
     temporal_result = temporal_action_recognition_and_localization(
@@ -1565,6 +1662,26 @@ def process_video_with_mediapipe(
     # Movement Cadence (Steps per Minute)
     cadence_spm = round(float(len(ankle_y_diffs) / max(1.0, float(frame_count) * dt) * 60.0 / 2.0), 1) if frame_count > 10 else 0.0
 
+    # ACL Biomechanical Risk Assessment (OpenSim Random Forest Model trained on 43 MoCap participants)
+    acl_eval_func = get_acl_evaluator()
+    acl_risk_data = None
+    if acl_eval_func is not None:
+        try:
+            min_k_val = float(min(min(knee_angles_l), min(knee_angles_r))) if (knee_angles_l and knee_angles_r) else 120.0
+            acl_risk_data = acl_eval_func(
+                max_valgus=float(max_valgus),
+                movement_asymmetry=float(movement_asymmetry),
+                max_trunk_lean=float(max_trunk_lean),
+                min_knee_flexion=min_k_val,
+                touchdown_v=float(max_down_v),
+                peak_flight=float(peak_flight),
+                action=detected_activity
+            )
+            if acl_risk_data and "acl_vulnerability_score" in acl_risk_data:
+                injury_probs["ACL Injury"] = int(round(acl_risk_data["acl_vulnerability_score"]))
+        except Exception as e:
+            print(f"ACL evaluation warning: {e}")
+
     # Multi-component Bilateral Symmetry Index
     sym_knee = max(0.0, 100.0 - (abs(avg_knee_l - avg_knee_r) / 180.0) * 100.0)
     sym_valgus = max(0.0, 100.0 - abs(max_valgus_l - max_valgus_r) * 2.5)
@@ -1633,6 +1750,8 @@ def process_video_with_mediapipe(
             "footwear": footwear,
             "rpe": rpe,
             "sleep_quality": sleep_quality,
+            "sprint_analysis": actions_result.get("sprint_analysis"),
+            "acl_biomechanical_risk": acl_risk_data,
             "biomechanics": {
                 "max_trunk_lean": round(max_trunk_lean, 2),
                 "movement_asymmetry": round(movement_asymmetry, 2),

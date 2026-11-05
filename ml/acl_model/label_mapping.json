@@ -1,0 +1,14 @@
+{
+  "0": {
+    "class_name": "Healthy_Control",
+    "description": "Healthy control participants with no history of ACL tear or knee reconstruction",
+    "participant_count": 22,
+    "trial_count": 1143
+  },
+  "1": {
+    "class_name": "Previous_ACL_Injury",
+    "description": "Participants with previous unilateral ACL reconstruction who returned to activity",
+    "participant_count": 21,
+    "trial_count": 1057
+  }
+}
