@@ -17,3 +17,4 @@ This directory houses the balanced 7-class video dataset assembled from UCF101 a
 ## Feature Extraction
 
 All clips are processed through `ml/extract_features.py` using YOLOv8 pose estimation, extracting a 95-dimensional kinematic vector across 32 normalized temporal frames. The pre-extracted dataset is preserved in `ml/dataset_features.npz`.
+
