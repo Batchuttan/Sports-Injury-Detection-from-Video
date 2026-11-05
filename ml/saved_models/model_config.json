@@ -1,0 +1,28 @@
+{
+  "model_architecture": "SportsActionSTNet (Spatial-Temporal 1D-CNN + BiLSTM + Temporal Attention)",
+  "in_features": 95,
+  "sequence_length": 32,
+  "num_classes": 7,
+  "classes": [
+    "Jumping",
+    "Squatting",
+    "Sprinting",
+    "Landing",
+    "Throwing",
+    "Cutting Movements",
+    "Sports Specific Drills"
+  ],
+  "class_mapping": {
+    "0": "Jumping",
+    "1": "Squatting",
+    "2": "Sprinting",
+    "3": "Landing",
+    "4": "Throwing",
+    "5": "Cutting Movements",
+    "6": "Sports Specific Drills"
+  },
+  "best_epoch": 12,
+  "best_val_macro_f1": 0.7959673133322595,
+  "best_model_weights": "C:\\Users\\User\\OneDrive\\Desktop\\INTERNSHIPS\\Infosys Springboard\\Sports Injury Detection from Video\\ml\\saved_models\\best_sports_action_model.pt",
+  "normalization": "Bounding-box / Torso height normalized coordinates + angular velocities"
+}

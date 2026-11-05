@@ -15,10 +15,16 @@ frontend/.env.development.local
 *.db-wal
 
 # Ephemeral user video upload files
-backend/uploads/a_*
-backend/uploads/b_*
+backend/uploads/
+backend/processed/
 
 # Temp & Editor swap files
 *.swp
 *.swo
 .DS_Store
+
+# Machine Learning Artifacts
+ml/dataset_features.npz
+ml/sports_dataset/
+ml/__pycache__/
+
