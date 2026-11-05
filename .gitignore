@@ -1,4 +1,6 @@
 # Dependencies & Caches
+__pycache__/
+*.pyc
 backend/venv/
 .venv/
 backend/__pycache__/

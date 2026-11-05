@@ -161,8 +161,8 @@ def classify_all_actions(
     mean_va = float((np.mean(v_al) + np.mean(v_ar)) / 2.0) if (len(v_al) > 0 and len(v_ar) > 0) else 0.0
 
     # Bilateral flight clearance
-    g_l = float(np.percentile(ank_l_y_arr, 85)) if len(ank_l_y_arr) > 5 else 1.0
-    g_r = float(np.percentile(ank_r_y_arr, 85)) if len(ank_r_y_arr) > 5 else 1.0
+    g_l = float(np.percentile(ank_l_y_arr, 98)) if len(ank_l_y_arr) > 5 else 1.0
+    g_r = float(np.percentile(ank_r_y_arr, 98)) if len(ank_r_y_arr) > 5 else 1.0
     n_ank_y = min(len(ank_l_y_arr), len(ank_r_y_arr))
     if n_ank_y > 0:
         elev_l = np.maximum(0.0, g_l - ank_l_y_arr[:n_ank_y])
@@ -252,46 +252,42 @@ def classify_all_actions(
             "breakdown": breakdown
         }
 
+    # Hip-to-ankle vertical compression
+    n_ha = min(n_ank_y, len(hip_y_arr))
+    if n_ha > 0:
+        hip_to_ank = np.minimum(ank_l_y_arr[:n_ha], ank_r_y_arr[:n_ha]) - hip_y_arr[:n_ha]
+        hip_ank_comp = float(np.ptp(hip_to_ank)) if len(hip_to_ank) > 0 else 0.0
+    else:
+        hip_ank_comp = 0.0
+
     # ================= 7 SPECIFIC ACTIONS EMPIRICAL KINETIC ENGINE =================
     scores = {}
 
     # 1. SQUATTING
     squat_score = 0.0
-    if min_k < 120.0 and rom_k > 40.0:
-        depth_pts = max(0.0, (120.0 - min_k) / 30.0) * 45.0
-        rom_pts = min(35.0, (rom_k / 75.0) * 35.0)
+    if min_k < 120.0 and rom_k > 35.0:
+        depth_pts = min(45.0, max(0.0, (120.0 - min_k) / 40.0) * 45.0)
+        rom_pts = min(30.0, (rom_k / 75.0) * 30.0)
         squat_score += depth_pts + rom_pts
-    if hip_vert_rom > 0.12:
+    if hip_vert_rom > 0.10:
         squat_score += min(20.0, (hip_vert_rom / 0.25) * 20.0)
-    if peak_bilat_flight < 0.045:
-        squat_score += 15.0
-    else:
-        squat_score -= 40.0
+    if hip_ank_comp > 0.10:
+        squat_score += min(15.0, (hip_ank_comp / 0.20) * 15.0)
+    if knee_corr > 0.35:
+        squat_score += 10.0
     if gait_alternations <= 1:
         squat_score += 15.0
     else:
         squat_score -= gait_alternations * 15.0
-    if knee_corr > 0.35:
-        squat_score += 10.0
+    # Deep squat hallmark bonus (true athletic deep squat knee flexion < 80 deg with large ROM)
+    if min_k < 80.0 and rom_k > 55.0 and gait_alternations <= 1:
+        squat_score += 40.0
+    # High bilateral airborne flight clearance is incompatible with grounded squatting
+    if peak_bilat_flight > 0.15:
+        squat_score -= 45.0
     scores["Squatting"] = max(0.0, squat_score)
 
-    # 2. JUMPING
-    jump_score = 0.0
-    if peak_bilat_flight > 0.045:
-        jump_score += min(55.0, (peak_bilat_flight / 0.15) * 55.0)
-    if hip_vert_rom > 0.14 and (up_v > 0.5 or down_v > 0.5):
-        jump_score += min(30.0, (hip_vert_rom / 0.25) * 30.0)
-    if knee_corr > 0.55:
-        jump_score += 20.0
-    elif knee_corr > 0.25:
-        jump_score += 10.0
-    if gait_alternations <= 2:
-        jump_score += 10.0
-    else:
-        jump_score -= gait_alternations * 12.0
-    scores["Jumping"] = max(0.0, jump_score)
-
-    # 3. THROWING
+    # 2. THROWING
     throw_score = 0.0
     if elbow_rom > 80.0:
         throw_score += min(40.0, (elbow_rom / 150.0) * 40.0)
@@ -301,11 +297,34 @@ def classify_all_actions(
     if wrist_v_asym > 0.30:
         throw_score += 15.0
 
-    if min_k < 105.0 and rom_k > 55.0 and peak_bilat_flight < 0.04 and gait_alternations <= 1:
+    if min_k < 105.0 and rom_k > 55.0 and peak_bilat_flight < 0.08 and gait_alternations <= 1:
         throw_score -= 50.0
     if gait_alternations > 6:
         throw_score -= 30.0
     scores["Throwing"] = max(0.0, throw_score)
+
+    # 3. JUMPING
+    jump_score = 0.0
+    if peak_bilat_flight > 0.07:
+        jump_score += min(55.0, (peak_bilat_flight / 0.16) * 55.0)
+    if hip_vert_rom > 0.14 and (up_v > 0.5 or down_v > 0.5):
+        jump_score += min(30.0, (hip_vert_rom / 0.25) * 30.0)
+    if knee_corr > 0.45:
+        jump_score += 15.0
+    if gait_alternations <= 2:
+        jump_score += 10.0
+    else:
+        jump_score -= gait_alternations * 12.0
+    # Airborne flight bonus for genuine vertical jumps with explosive propulsion
+    if peak_bilat_flight > 0.14 and up_v > 0.8 and knee_corr > 0.40:
+        jump_score += 25.0
+    # If athlete descends into deep squat with low flight, penalize jumping
+    if min_k < 80.0 and peak_bilat_flight < 0.14:
+        jump_score -= 45.0
+    # If upper body ballistic throwing action is dominant, penalize jumping
+    if throw_score >= 60.0 and elbow_rom > 90.0:
+        jump_score -= 40.0
+    scores["Jumping"] = max(0.0, jump_score)
 
     # 4. SPRINTING
     sprint_score = 0.0
@@ -321,12 +340,21 @@ def classify_all_actions(
 
     # 5. LANDING
     land_score = 0.0
-    if (peak_bilat_flight > 0.04 or jump_score > 40.0) and down_v > 0.55 and min_k < 142.0 and rom_k > 20.0:
+    # Landing requires genuine airborne flight clearance followed by downward deceleration
+    if peak_bilat_flight > 0.10 and down_v > 0.7 and rom_k > 15.0:
         land_score += min(45.0, (down_v / 1.5) * 45.0)
-        land_score += min(30.0, (peak_bilat_flight / 0.12) * 30.0)
-        land_score += max(0.0, (142.0 - min_k) / 35.0) * 25.0
+        land_score += min(30.0, (peak_bilat_flight / 0.16) * 30.0)
+        # Biomechanical ground impact knee flexion is shallow-to-moderate (115-150 deg)
+        if 115.0 <= min_k <= 150.0:
+            land_score += 25.0
+        elif min_k < 105.0:
+            # Landing impact absorption does not collapse into a deep squat
+            land_score -= 40.0
     if gait_alternations > 3:
         land_score -= 35.0
+    # Deep knee flexion with large ROM is a squat, never landing
+    if min_k < 105.0 and rom_k > 50.0 and squat_score > 40.0:
+        land_score = min(land_score, squat_score - 30.0, 30.0)
     scores["Landing"] = max(0.0, land_score)
 
     # 6. CUTTING MOVEMENTS
@@ -572,8 +600,8 @@ def temporal_action_recognition_and_localization(
         w_k_corr = float(np.corrcoef(win_knees_l[:w_nk], win_knees_r[:w_nk])[0, 1]) if (w_nk > 4 and np.std(win_knees_l[:w_nk]) > 0.5 and np.std(win_knees_r[:w_nk]) > 0.5) else 0.0
 
         # Flight
-        w_gl = float(np.percentile(win_ay_l, 85)) if len(win_ay_l) > 4 else norm_h
-        w_gr = float(np.percentile(win_ay_r, 85)) if len(win_ay_r) > 4 else norm_h
+        w_gl = float(np.percentile(win_ay_l, 98)) if len(win_ay_l) > 4 else norm_h
+        w_gr = float(np.percentile(win_ay_r, 98)) if len(win_ay_r) > 4 else norm_h
         w_nay = min(len(win_ay_l), len(win_ay_r))
         if w_nay > 0:
             w_bilat = np.minimum(np.maximum(0, w_gl - np.array(win_ay_l[:w_nay])), np.maximum(0, w_gr - np.array(win_ay_r[:w_nay]))) / norm_h
@@ -621,24 +649,26 @@ def temporal_action_recognition_and_localization(
         # Squatting
         sq_score = 0.0
         if w_min_k < 120.0 and w_rom_k > 35.0:
-            sq_score += max(0.0, (120.0 - w_min_k) / 30.0) * 45.0 + min(35.0, (w_rom_k / 75.0) * 35.0)
+            sq_score += max(0.0, (120.0 - w_min_k) / 40.0) * 45.0 + min(30.0, (w_rom_k / 75.0) * 30.0)
         if w_hip_rom > 0.10:
             sq_score += min(20.0, (w_hip_rom / 0.20) * 20.0)
-        if w_flight < 0.045:
-            sq_score += 15.0
-        else:
-            sq_score -= 40.0
+        if w_k_corr > 0.35:
+            sq_score += 10.0
         if w_gait_alts <= 1:
             sq_score += 15.0
         else:
             sq_score -= w_gait_alts * 15.0
+        if w_min_k < 80.0 and w_rom_k > 55.0 and w_gait_alts <= 1:
+            sq_score += 40.0
+        if w_flight > 0.15:
+            sq_score -= 45.0
         w_scores["Squatting"] = max(0.0, sq_score)
 
         # Jumping
         jp_score = 0.0
-        if w_flight > 0.045:
-            jp_score += min(55.0, (w_flight / 0.15) * 55.0)
-        if w_hip_rom > 0.12 and (w_up_v > 0.5 or w_down_v > 0.5):
+        if w_flight > 0.08:
+            jp_score += min(60.0, (w_flight / 0.16) * 60.0)
+        if w_hip_rom > 0.14 and (w_up_v > 0.5 or w_down_v > 0.5):
             jp_score += min(30.0, (w_hip_rom / 0.25) * 30.0)
         if w_k_corr > 0.40:
             jp_score += 15.0
@@ -646,6 +676,10 @@ def temporal_action_recognition_and_localization(
             jp_score += 10.0
         else:
             jp_score -= w_gait_alts * 12.0
+        if w_flight > 0.14:
+            jp_score += 35.0
+        if w_min_k < 80.0 and w_flight < 0.14:
+            jp_score -= 45.0
         w_scores["Jumping"] = max(0.0, jp_score)
 
         # Throwing
