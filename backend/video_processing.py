@@ -1,8 +1,14 @@
 import cv2
 import os
+import sys
 import uuid
 import math
 import numpy as np
+
+# Ensure project root is always in sys.path so ml models can be imported from any working directory
+_project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _project_root not in sys.path:
+    sys.path.insert(0, _project_root)
 
 # Load YOLOv8-pose model for robust human keypoint extraction
 _yolo_model = None
@@ -294,11 +300,10 @@ def classify_all_actions(
     scores = {}
 
     # Airborne launch vs Ground contact definition:
-    # Jumping means launching from the ground into airborne flight (both feet clear the floor, airborne flight)
-    # Squatting means continuous bilateral contact with the ground at all times (zero flight)
-    # True airborne flight requires genuine bilateral foot clearance or vertical impulse takeoff
-    has_launch = bool(peak_bilat_flight >= 0.075 and (hip_vert_rom >= 0.08 or up_v >= 0.40 or down_v >= 0.60))
-    has_airborne_flight = bool(peak_bilat_flight >= 0.075 or has_launch)
+    # Jumping means launching from the ground into airborne flight (both feet clear the floor, airborne flight) with 0-2 steps
+    # Running gait has high alternating cyclical foot turnover (gait_alternations >= 3)
+    has_launch = bool(peak_bilat_flight >= 0.075 and (hip_vert_rom >= 0.08 or up_v >= 0.40 or down_v >= 0.60) and gait_alternations <= 2)
+    has_airborne_flight = bool((peak_bilat_flight >= 0.075 or has_launch) and gait_alternations <= 2)
 
     # Bilateral squat requires strict ground contact at all times, high knee correlation, and non-ballistic arms:
     is_bilateral_squat = bool(not has_airborne_flight and peak_bilat_flight < 0.06 and min_k < 105.0 and rom_k > 40.0 and knee_corr >= 0.40 and peak_vw < 1.8)
@@ -347,7 +352,7 @@ def classify_all_actions(
 
     # 3. JUMPING (Launching from the ground into airborne flight)
     jump_score = 0.0
-    # Jumping requires true airborne flight launch; grounded squats/throws are NOT jumping if feet never fly
+    # Jumping requires true airborne flight launch; grounded squats/throws/sprints are NOT jumping if feet never fly or gait alternates
     if has_airborne_flight:
         if peak_bilat_flight > 0.06:
             jump_score += min(55.0, (peak_bilat_flight / 0.14) * 55.0)
@@ -366,17 +371,20 @@ def classify_all_actions(
         if up_v > 0.45:
             jump_score += 30.0
         if gait_alternations > 2:
-            jump_score -= gait_alternations * 10.0
+            jump_score -= gait_alternations * 15.0
     scores["Jumping"] = max(0.0, jump_score)
 
     # 4. SPRINTING
     sprint_score = 0.0
-    if gait_alternations >= 3:
-        sprint_score += min(55.0, (gait_alternations / 8.0) * 55.0)
-    if peak_va > 1.8:
-        sprint_score += min(30.0, (peak_va / 4.0) * 30.0)
-    if mean_stride > 0.10:
-        sprint_score += min(20.0, (mean_stride / 0.25) * 20.0)
+    if gait_alternations >= 2:
+        sprint_score += min(55.0, (gait_alternations / 6.0) * 55.0)
+    if peak_va > 1.6:
+        sprint_score += min(30.0, (peak_va / 3.5) * 30.0)
+    if mean_stride > 0.08:
+        sprint_score += min(20.0, (mean_stride / 0.22) * 20.0)
+    if gait_alternations >= 4 and peak_va >= 2.0:
+        sprint_score += 35.0
+    scores["Sprinting"] = max(0.0, sprint_score)
     scores["Sprinting"] = max(0.0, sprint_score)
 
     # 5. LANDING
@@ -448,20 +456,24 @@ def classify_all_actions(
                     print(f"Sprint classifier inference warning: {e}")
 
     # ================= 1. UNIVERSAL PRIMARY CANDIDATE DETERMINATION =================
-    # Priority 1: Dedicated Sprint Classifier Check (genuine running locomotion)
-    if sprint_analysis and bool(sprint_analysis.get("is_sprinting", False) and sprint_analysis.get("sprint_probability", 0.0) >= 0.50 and (peak_va >= 2.2 or gait_alternations >= 3)):
+    # Priority 1: Sprinting Check (Neural SprintClassifier OR High-Cadence Cyclical Gait Locomotion)
+    is_neural_sprint = bool(sprint_analysis and sprint_analysis.get("is_sprinting", False) and sprint_analysis.get("sprint_probability", 0.0) >= 0.50 and (peak_va >= 2.0 or gait_alternations >= 2))
+    is_empirical_sprint = bool(gait_alternations >= 3 and peak_va >= 1.6 and scores.get("Sprinting", 0.0) >= 30.0)
+
+    if is_neural_sprint or is_empirical_sprint:
         candidate_action = "Sprinting"
     # Priority 2: Ballistic Upper Kinetic Chain Strike (Throwing / Shot Put / Pitching)
     elif is_ballistic_throw and not is_vertical_jump and not is_bilateral_squat and scores.get("Throwing", 0.0) >= 30.0:
         candidate_action = "Throwing"
     # Priority 3: Genuine Airborne Launch Takeoff / Airborne Flight (Jumping)
-    elif (has_airborne_flight or peak_bilat_flight >= 0.08) and (scores.get("Jumping", 0.0) >= 25.0 or peak_bilat_flight >= 0.12):
+    # Strictly requires low gait alternations (<= 2 steps); running with alternating cyclical strides is never a jump
+    elif (has_airborne_flight or peak_bilat_flight >= 0.08) and (scores.get("Jumping", 0.0) >= 25.0 or peak_bilat_flight >= 0.12) and gait_alternations <= 2:
         candidate_action = "Jumping"
     # Priority 4: Planted-foot Bilateral Squatting - strictly requires continuous ground contact at all times
     elif not has_airborne_flight and peak_bilat_flight < 0.07 and is_bilateral_squat and scores.get("Squatting", 0.0) >= 30.0:
         candidate_action = "Squatting"
     # Priority 5: Pure drop landing without upward jump
-    elif has_launch and up_v < 0.40 and down_v >= 0.70 and scores.get("Landing", 0.0) >= 30.0:
+    elif has_launch and up_v < 0.40 and down_v >= 0.70 and scores.get("Landing", 0.0) >= 30.0 and gait_alternations <= 2:
         candidate_action = "Landing"
     # Priority 6: Highest kinematic score
     else:
@@ -797,7 +809,7 @@ def temporal_action_recognition_and_localization(
 
         # Jumping (airborne flight launch)
         jp_score = 0.0
-        if w_flight > 0.06:
+        if w_flight > 0.06 and w_gait_alts <= 2:
             jp_score += min(60.0, (w_flight / 0.14) * 60.0) + 35.0
             if w_hip_rom > 0.08:
                 jp_score += min(25.0, (w_hip_rom / 0.20) * 25.0)

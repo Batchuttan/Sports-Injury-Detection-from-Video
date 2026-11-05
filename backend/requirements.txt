@@ -12,3 +12,5 @@ passlib[bcrypt]
 python-multipart
 bcrypt
 imageio-ffmpeg
+joblib
+scikit-learn
