@@ -293,67 +293,78 @@ def classify_all_actions(
     # ================= 7 SPECIFIC ACTIONS EMPIRICAL KINETIC ENGINE =================
     scores = {}
 
-    # 1. SQUATTING
+    # Airborne launch vs Ground contact definition:
+    # Jumping means launching from the ground into airborne flight (both feet clear the floor, upward takeoff)
+    # Squatting means continuous bilateral contact with the ground at all times
+    has_launch = bool(peak_bilat_flight > 0.05 or (peak_bilat_flight > 0.035 and (up_v > 0.45 or down_v > 0.7)))
+
+    # 1. SQUATTING (Strict continuous contact with the ground at all times)
     squat_score = 0.0
-    if min_k < 120.0 and rom_k > 35.0:
-        depth_pts = min(45.0, max(0.0, (120.0 - min_k) / 40.0) * 45.0)
-        rom_pts = min(30.0, (rom_k / 75.0) * 30.0)
-        squat_score += depth_pts + rom_pts
-    if hip_vert_rom > 0.10:
-        squat_score += min(20.0, (hip_vert_rom / 0.25) * 20.0)
-    if hip_ank_comp > 0.10:
-        squat_score += min(15.0, (hip_ank_comp / 0.20) * 15.0)
-    if knee_corr > 0.35:
-        squat_score += 10.0
-    if gait_alternations <= 1:
-        squat_score += 15.0
+    if not has_launch:
+        if min_k < 125.0 and rom_k > 30.0:
+            depth_pts = min(45.0, max(0.0, (125.0 - min_k) / 45.0) * 45.0)
+            rom_pts = min(30.0, (rom_k / 75.0) * 30.0)
+            squat_score += depth_pts + rom_pts
+        if hip_vert_rom > 0.08:
+            squat_score += min(20.0, (hip_vert_rom / 0.22) * 20.0)
+        if hip_ank_comp > 0.08:
+            squat_score += min(15.0, (hip_ank_comp / 0.18) * 15.0)
+        if knee_corr > 0.35:
+            squat_score += 15.0
+        if gait_alternations <= 1:
+            squat_score += 15.0
+        else:
+            squat_score -= gait_alternations * 15.0
+        # Deep squat hallmark bonus (true athletic deep squat knee flexion < 85 deg with large ROM)
+        if min_k < 85.0 and rom_k > 50.0 and gait_alternations <= 1:
+            squat_score += 35.0
     else:
-        squat_score -= gait_alternations * 15.0
-    # Deep squat hallmark bonus (true athletic deep squat knee flexion < 80 deg with large ROM)
-    if min_k < 80.0 and rom_k > 55.0 and gait_alternations <= 1:
-        squat_score += 40.0
-    # High bilateral airborne flight clearance is incompatible with grounded squatting
-    if peak_bilat_flight > 0.15:
-        squat_score -= 45.0
+        # Athlete launched off the ground into airborne flight: this is JUMPING, not squatting!
+        # Countermovement knee flexion before a jump is jump takeoff, NOT a grounded squat workout
+        squat_score = 0.0
     scores["Squatting"] = max(0.0, squat_score)
 
-    # 2. THROWING
+    # 2. THROWING (Strict unilateral ballistic arm strike with anchored feet)
     throw_score = 0.0
-    if elbow_rom > 80.0:
-        throw_score += min(40.0, (elbow_rom / 150.0) * 40.0)
-    if rel_arm_v > 1.2 or peak_vw > 1.8:
-        arm_v_metric = max(rel_arm_v, peak_vw)
-        throw_score += min(40.0, (arm_v_metric / 3.5) * 40.0)
-    if wrist_v_asym > 0.30:
-        throw_score += 15.0
+    # Genuine athletic throwing is a unilateral arm strike (large arm asymmetry) with plant foot on ground.
+    # Bilateral arm swings during jump takeoff, squats, or running must NEVER be classified as throwing!
+    is_unilateral_throw = bool(wrist_v_asym >= 0.40)
+    has_flight_or_run = bool(has_launch or peak_bilat_flight > 0.05 or up_v > 0.50 or gait_alternations > 3)
+    is_bilateral_squat = bool(min_k < 105.0 and rom_k > 45.0 and knee_corr > 0.35)
 
-    if min_k < 105.0 and rom_k > 55.0 and peak_bilat_flight < 0.08 and gait_alternations <= 1:
-        throw_score -= 50.0
-    if gait_alternations > 6:
-        throw_score -= 30.0
+    if is_unilateral_throw and not has_flight_or_run and not is_bilateral_squat:
+        if elbow_rom > 75.0:
+            throw_score += min(35.0, (elbow_rom / 140.0) * 35.0)
+        if rel_arm_v > 1.4 or peak_vw > 1.8:
+            arm_v_metric = max(rel_arm_v, peak_vw)
+            throw_score += min(40.0, (arm_v_metric / 3.5) * 40.0)
+        throw_score += min(25.0, (wrist_v_asym / 0.70) * 25.0)
+        if gait_alternations > 5:
+            throw_score -= 30.0
     scores["Throwing"] = max(0.0, throw_score)
 
-    # 3. JUMPING
+    # 3. JUMPING (Launching from the ground into airborne flight)
     jump_score = 0.0
-    if peak_bilat_flight > 0.07:
-        jump_score += min(55.0, (peak_bilat_flight / 0.16) * 55.0)
-    if hip_vert_rom > 0.14 and (up_v > 0.5 or down_v > 0.5):
-        jump_score += min(30.0, (hip_vert_rom / 0.25) * 30.0)
-    if knee_corr > 0.45:
-        jump_score += 15.0
-    if gait_alternations <= 2:
-        jump_score += 10.0
+    if has_launch:
+        if peak_bilat_flight > 0.04:
+            jump_score += min(55.0, (peak_bilat_flight / 0.14) * 55.0)
+        if up_v > 0.4 or down_v > 0.4:
+            takeoff_v = max(up_v, down_v)
+            jump_score += min(30.0, (takeoff_v / 1.0) * 30.0)
+        if hip_vert_rom > 0.08:
+            jump_score += min(20.0, (hip_vert_rom / 0.20) * 20.0)
+        if knee_corr > 0.35:
+            jump_score += 15.0
+        if gait_alternations <= 2:
+            jump_score += 10.0
+        else:
+            jump_score -= gait_alternations * 12.0
+        # High airborne flight takeoff bonus
+        if peak_bilat_flight > 0.08:
+            jump_score += 25.0
     else:
-        jump_score -= gait_alternations * 12.0
-    # Airborne flight bonus for genuine vertical jumps with explosive propulsion
-    if peak_bilat_flight > 0.14 and up_v > 0.8 and knee_corr > 0.40:
-        jump_score += 25.0
-    # If athlete descends into deep squat with low flight, penalize jumping
-    if min_k < 80.0 and peak_bilat_flight < 0.14:
-        jump_score -= 45.0
-    # If upper body ballistic throwing action is dominant, penalize jumping
-    if throw_score >= 60.0 and elbow_rom > 90.0:
-        jump_score -= 40.0
+        # Ground contact maintained throughout: zero launch means NOT jumping!
+        jump_score = 0.0
     scores["Jumping"] = max(0.0, jump_score)
 
     # 4. SPRINTING
@@ -364,27 +375,20 @@ def classify_all_actions(
         sprint_score += min(30.0, (peak_va / 4.0) * 30.0)
     if mean_stride > 0.10:
         sprint_score += min(20.0, (mean_stride / 0.25) * 20.0)
-    if gait_alternations <= 1 or (throw_score >= 60.0 and elbow_rom > 120.0 and peak_vw > 2.0 and gait_alternations < 6):
-        sprint_score = 0.0
     scores["Sprinting"] = max(0.0, sprint_score)
 
     # 5. LANDING
     land_score = 0.0
-    # Landing requires genuine airborne flight clearance followed by downward deceleration
-    if peak_bilat_flight > 0.10 and down_v > 0.7 and rom_k > 15.0:
+    # Landing requires downward touchdown deceleration following airborne flight
+    if has_launch and down_v > 0.7 and rom_k > 15.0:
         land_score += min(45.0, (down_v / 1.5) * 45.0)
         land_score += min(30.0, (peak_bilat_flight / 0.16) * 30.0)
-        # Biomechanical ground impact knee flexion is shallow-to-moderate (115-150 deg)
         if 115.0 <= min_k <= 150.0:
             land_score += 25.0
         elif min_k < 105.0:
-            # Landing impact absorption does not collapse into a deep squat
             land_score -= 40.0
     if gait_alternations > 3:
         land_score -= 35.0
-    # Deep knee flexion with large ROM is a squat, never landing
-    if min_k < 105.0 and rom_k > 50.0 and squat_score > 40.0:
-        land_score = min(land_score, squat_score - 30.0, 30.0)
     scores["Landing"] = max(0.0, land_score)
 
     # 6. CUTTING MOVEMENTS
@@ -397,7 +401,8 @@ def classify_all_actions(
 
     # 7. SPORTS SPECIFIC DRILLS
     drill_score = 0.0
-    if lat_reversals >= 3 and max_lat_accel > 16.0 and gait_alternations >= 2:
+    # Drills require agility footwork with multi-directional reversals, not linear sprinting or jumping
+    if lat_reversals >= 3 and max_lat_accel > 16.0 and gait_alternations >= 2 and not has_launch:
         drill_score += min(45.0, (lat_reversals / 5.0) * 45.0)
         drill_score += min(35.0, (max_lat_accel / 35.0) * 35.0)
         drill_score += min(20.0, (rom_k / 60.0) * 20.0)
@@ -430,23 +435,30 @@ def classify_all_actions(
                         p_sprint = float(sprint_analysis.get("sprint_probability", 0.0))
                         is_sprint = bool(sprint_analysis.get("is_sprinting", False))
                         if is_sprint and p_sprint >= 0.50:
-                            scores["Sprinting"] = max(scores["Sprinting"], 65.0 + p_sprint * 30.0)
-                            # Sprinters undergo cyclical flight-ground phases; suppress false jumping/landing hijacking
-                            if p_sprint >= 0.65:
-                                scores["Landing"] = min(scores.get("Landing", 0.0), 35.0)
-                                scores["Jumping"] = min(scores.get("Jumping", 0.0), 35.0)
+                            # Primary action MUST be Sprinting, not Sports Specific Drills, Landing, or Jumps
+                            scores["Sprinting"] = max(scores["Sprinting"], 95.0 + p_sprint * 5.0)
+                            scores["Sports Specific Drills"] = min(scores.get("Sports Specific Drills", 0.0), 15.0)
+                            scores["Cutting Movements"] = min(scores.get("Cutting Movements", 0.0), 15.0)
+                            scores["Landing"] = min(scores.get("Landing", 0.0), 15.0)
+                            scores["Jumping"] = min(scores.get("Jumping", 0.0), 15.0)
+                            scores["Throwing"] = 0.0
+                            scores["Squatting"] = 0.0
                         elif not is_sprint and p_sprint < 0.30:
-                            scores["Sprinting"] = min(scores["Sprinting"], 20.0)
+                            scores["Sprinting"] = min(scores["Sprinting"], 15.0)
                 except Exception as e:
                     print(f"Sprint classifier inference warning: {e}")
 
-    best_action = max(scores, key=scores.get)
-    best_score = scores[best_action]
-
-    if best_score < 30.0:
-        primary_action = "Non-Sports / No Athletic Movement Detected"
+    # Explicit Sprinting Primary Action Override
+    if sprint_analysis and sprint_analysis.get("is_sprinting", False) and sprint_analysis.get("sprint_probability", 0.0) >= 0.50:
+        best_action = "Sprinting"
+        primary_action = "Sprinting"
     else:
-        primary_action = best_action
+        best_action = max(scores, key=scores.get)
+        best_score = scores[best_action]
+        if best_score < 30.0:
+            primary_action = "Non-Sports / No Athletic Movement Detected"
+        else:
+            primary_action = best_action
 
     squat_perf = bool(scores["Squatting"] >= 60.0 or (best_action == "Squatting" and scores["Squatting"] >= 40.0))
     jump_perf = bool(scores["Jumping"] >= 60.0 or (best_action == "Jumping" and scores["Jumping"] >= 40.0))

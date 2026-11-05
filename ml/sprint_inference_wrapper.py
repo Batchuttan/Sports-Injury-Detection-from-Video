@@ -180,3 +180,4 @@ class SprintClassifier:
             "mean_normalized_stride": round(mean_stride, 3),
             "evidence": f"Temporal stride dynamics & leg frequency model output: {classification} (p={p_sprint*100:.1f}%)"
         }
+
