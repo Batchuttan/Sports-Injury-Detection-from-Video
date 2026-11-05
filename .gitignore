@@ -24,7 +24,8 @@ backend/processed/
 .DS_Store
 
 # Machine Learning Artifacts
-ml/dataset_features.npz
-ml/sports_dataset/
+# Extracted features (dataset_features.npz) tracked for zero-setup evaluation
+ml/sports_dataset/**/*.avi
+ml/sports_dataset/**/*.mp4
 ml/__pycache__/
 
