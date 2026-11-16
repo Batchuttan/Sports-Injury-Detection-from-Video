@@ -5,6 +5,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { login, register, googleLogin, forgotPassword, getDeviceAccounts } from "@/lib/api";
 import { useGoogleLogin } from "@react-oauth/google";
+import { getUserFromToken } from "@/lib/auth";
 
 const KNOWN_PASSWORDS: Record<string, string> = {
   "superadmin@gmail.com": "superadmin",
@@ -125,6 +126,9 @@ export default function Home() {
   const [forgotSuccess, setForgotSuccess] = useState("");
   const [forgotError, setForgotError] = useState("");
 
+  // Authenticated session state lock
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
+
   const router = useRouter();
 
   const rememberAccountOnDevice = (userEmail: string, userPass?: string, userRole?: string) => {
@@ -144,6 +148,14 @@ export default function Home() {
   };
 
   useEffect(() => {
+    // 0. Active session guard: If user already holds a valid, non-expired token, lock out login and navigate directly to dashboard
+    const activeUser = getUserFromToken();
+    if (activeUser) {
+      router.replace("/dashboard");
+      return;
+    }
+    setIsCheckingAuth(false);
+
     // Check URL parameters for register mode or prefill email
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -260,7 +272,7 @@ export default function Home() {
 
         if (result.access_token) {
           localStorage.setItem("token", result.access_token);
-          router.push("/dashboard");
+          router.replace("/dashboard");
         }
       } catch (err: any) {
         console.warn("Google Auth notice:", err);
@@ -294,13 +306,13 @@ export default function Home() {
         const data = await login(email, password);
         localStorage.setItem("token", data.access_token);
         rememberAccountOnDevice(email, password, role);
-        router.push("/dashboard");
+        router.replace("/dashboard");
       } else {
         await register(email, password, role);
         const data = await login(email, password);
         localStorage.setItem("token", data.access_token);
         rememberAccountOnDevice(email, password, role);
-        router.push("/dashboard");
+        router.replace("/dashboard");
       }
     } catch (err) {
       if (err instanceof Error) {
@@ -338,6 +350,15 @@ export default function Home() {
       setForgotLoading(false);
     }
   };
+
+  if (isCheckingAuth) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white">
+        <div className="w-10 h-10 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin mb-4" />
+        <p className="text-slate-400 text-sm font-medium">Verifying active session...</p>
+      </div>
+    );
+  }
 
   return (
     <main className="flex-grow flex flex-col items-center justify-center relative overflow-hidden">

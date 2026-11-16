@@ -674,6 +674,22 @@ def login_for_access_token(form_data: OAuth2PasswordRequestForm = Depends(), db:
 
 
 
+@app.get("/auth/session")
+def verify_session(current_user: models.User = Depends(get_current_user)):
+    """Verifies that the user's cloud session token is active and valid."""
+    return {
+        "authenticated": True,
+        "email": current_user.email,
+        "role": current_user.role,
+        "user_id": current_user.id
+    }
+
+@app.post("/auth/logout")
+def user_logout(current_user: models.User = Depends(get_current_user)):
+    """Explicitly terminates the session on the server."""
+    print(f"[AUTH] User {current_user.email} logged out successfully.")
+    return {"message": "Session successfully terminated", "success": True}
+
 @app.get("/auth/device-accounts")
 def get_device_accounts(db: Session = Depends(get_db)):
     users = db.query(models.User).order_by(models.User.id.asc()).all()

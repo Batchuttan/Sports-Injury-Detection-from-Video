@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { getUserFromToken } from "@/lib/auth";
+import { getUserFromToken, clearSession } from "@/lib/auth";
+import { apiLogout } from "@/lib/api";
 import {
   LayoutDashboard,
   FileText,
@@ -44,23 +45,48 @@ export default function DashboardLayout({
     }
   };
 
+  const handleLogout = async () => {
+    const token = localStorage.getItem("token");
+    if (token) {
+      try {
+        await apiLogout(token);
+      } catch { }
+    }
+    clearSession();
+    window.location.replace("/");
+  };
+
   useEffect(() => {
     const fetchedUser = getUserFromToken();
     if (!fetchedUser) {
-      router.push("/");
-    } else {
-      setTimeout(() => {
-        setUser(fetchedUser);
-        if (fetchedUser.role === "Administrator") {
-          const savedRole = localStorage.getItem("preview_role") || fetchedUser.role;
-          setActiveRole(savedRole);
-        } else {
-          localStorage.removeItem("preview_role");
-          setActiveRole(fetchedUser.role);
-        }
-      }, 0);
-      syncAvatar();
+      router.replace("/");
+      return;
     }
+
+    setTimeout(() => {
+      setUser(fetchedUser);
+      if (fetchedUser.role === "Administrator") {
+        const savedRole = localStorage.getItem("preview_role") || fetchedUser.role;
+        setActiveRole(savedRole);
+      } else {
+        localStorage.removeItem("preview_role");
+        setActiveRole(fetchedUser.role);
+      }
+    }, 0);
+    syncAvatar();
+
+    // Session Locking: trap browser back button while user is actively logged in
+    window.history.pushState(null, "", window.location.href);
+
+    const handlePopState = () => {
+      const activeUser = getUserFromToken();
+      if (activeUser) {
+        // Prevent navigating back to unauthenticated pages
+        window.history.pushState(null, "", window.location.href);
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
 
     const handleRoleSwitch = (e: any) => {
       if (e.detail?.role) {
@@ -72,6 +98,7 @@ export default function DashboardLayout({
     window.addEventListener("avatar_updated", handleAvatarUpdate);
     window.addEventListener("role_switched", handleRoleSwitch);
     return () => {
+      window.removeEventListener("popstate", handlePopState);
       window.removeEventListener("avatar_updated", handleAvatarUpdate);
       window.removeEventListener("role_switched", handleRoleSwitch);
     };
@@ -346,7 +373,10 @@ export default function DashboardLayout({
               </svg>
               <span className="absolute top-1.5 right-1.5 w-2.5 h-2.5 bg-pink-500 rounded-full border-2 border-slate-950"></span>
             </button>
-            <button onClick={() => { localStorage.removeItem("token"); router.push("/"); }} className="px-4 py-2 text-sm font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors">
+            <button
+              onClick={handleLogout}
+              className="px-4 py-2 text-sm font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-lg transition-colors cursor-pointer"
+            >
               Log Out
             </button>
           </div>

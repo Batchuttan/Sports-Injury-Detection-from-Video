@@ -113,6 +113,33 @@ export const getMe = async (token: string) => {
   return response.json();
 };
 
+export const apiLogout = async (token: string) => {
+  try {
+    await fetch(`${API_URL}/auth/logout`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+  } catch {
+    // Non-blocking logout notification
+  }
+};
+
+export const verifyCloudSession = async (token: string) => {
+  const response = await fetch(`${API_URL}/auth/session`, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error("Invalid session");
+  }
+
+  return response.json();
+};
+
 export const getAthleteProfile = async (token: string) => {
   const response = await fetch(`${API_URL}/athlete/profile`, {
     headers: {
