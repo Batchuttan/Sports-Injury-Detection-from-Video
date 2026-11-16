@@ -33,6 +33,11 @@ class UserSettingsUpdate(BaseModel):
     sound_cue: Optional[str] = None
     custom_sound_url: Optional[str] = None
     sound_volume: Optional[int] = None
+    show_progress_badge: Optional[bool] = None
+
+    class Config:
+        extra = "ignore"
+        from_attributes = True
 
 # Athlete Schemas
 class AthleteProfileBase(BaseModel):

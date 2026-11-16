@@ -1,6 +1,6 @@
 export const API_URL =
-  typeof window !== "undefined" && window.location.hostname === "localhost"
-    ? "http://localhost:8000"
+  typeof window !== "undefined"
+    ? `${window.location.protocol}//${window.location.hostname}:8000`
     : "http://127.0.0.1:8000";
 
 export const register = async (email: string, password: string, role: string) => {
@@ -465,16 +465,24 @@ export const getUserSettings = async (token: string) => {
 };
 
 export const updateUserSettings = async (token: string, settingsData: Record<string, unknown>) => {
-  const response = await fetch(`${API_URL}/user/settings`, {
-    method: "PUT",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify(settingsData),
-  });
-  if (!response.ok) throw new Error("Failed to update user settings");
-  return response.json();
+  try {
+    const response = await fetch(`${API_URL}/user/settings`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(settingsData),
+    });
+    if (!response.ok) {
+      const errBody = await response.text();
+      throw new Error(`Failed to update user settings (${response.status}): ${errBody}`);
+    }
+    return await response.json();
+  } catch (err) {
+    console.warn("updateUserSettings warning:", err);
+    throw err;
+  }
 };
 
 export const uploadUserAvatar = async (token: string, file: File) => {

@@ -204,7 +204,7 @@ app.add_middleware(
 
 
 
-    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|0\.0\.0\.0)(:[0-9]+)?$",
+    allow_origin_regex=r"^https?://(localhost|127\.0\.0\.1|0\.0\.0\.0|192\.168\.[0-9]+\.[0-9]+|10\.[0-9]+\.[0-9]+\.[0-9]+|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9]+\.[0-9]+)(:[0-9]+)?$",
 
 
 
@@ -1593,73 +1593,31 @@ def update_user_settings(
 
 
 
-    if settings_in.email_alerts is not None:
-
-
-
+    if getattr(settings_in, "email_alerts", None) is not None:
         current_user.email_alerts = 1 if settings_in.email_alerts else 0
 
-
-
-    if settings_in.daily_wellness is not None:
-
-
-
+    if getattr(settings_in, "daily_wellness", None) is not None:
         current_user.daily_wellness = 1 if settings_in.daily_wellness else 0
 
-
-
-    if settings_in.sound_effects is not None:
-
-
-
+    if getattr(settings_in, "sound_effects", None) is not None:
         current_user.sound_effects = 1 if settings_in.sound_effects else 0
 
-
-
-    if settings_in.sound_cue is not None:
-
-
-
+    if getattr(settings_in, "sound_cue", None) is not None:
         current_user.sound_cue = settings_in.sound_cue
 
-
-
-    if settings_in.custom_sound_url is not None:
-
-
-
+    if getattr(settings_in, "custom_sound_url", None) is not None:
         current_user.custom_sound_url = settings_in.custom_sound_url
 
-
-
-    if settings_in.sound_volume is not None:
-
-
-
+    if getattr(settings_in, "sound_volume", None) is not None:
         current_user.sound_volume = max(0, min(100, int(settings_in.sound_volume)))
 
-
-
-    if settings_in.show_progress_badge is not None:
+    if getattr(settings_in, "show_progress_badge", None) is not None:
         current_user.show_progress_badge = 1 if settings_in.show_progress_badge else 0
 
-    if settings_in.profile_picture is not None:
-
-
-
+    if getattr(settings_in, "profile_picture", None) is not None:
         current_user.profile_picture = settings_in.profile_picture
-
-
-
         prof = db.query(models.AthleteProfile).filter(models.AthleteProfile.user_id == current_user.id).first()
-
-
-
         if prof:
-
-
-
             prof.profile_picture = settings_in.profile_picture
 
 
